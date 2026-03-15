@@ -151,7 +151,7 @@ const SAMPLE_NEWS: NewsArticle[] = [
   {
     title: "Ethereum ETF Trading Volume Hits Record High",
     description:
-      "Spot Ethereum ETFs recorded their highest single-day trading volume since launch, attracting over $1.2 billion in transactions across major exchanges.",
+      "Spot Ethereum ETFs recorded their highest single-day trading volume since launch, attracting over $1.2 billion in transactions.",
     url: "#",
     image: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400",
     publishedAt: new Date(Date.now() - 10800000).toISOString(),
@@ -160,7 +160,7 @@ const SAMPLE_NEWS: NewsArticle[] = [
   {
     title: "Solana DeFi Ecosystem Expands with New Protocol Launch",
     description:
-      "A new decentralized finance protocol on Solana claims to offer 10x faster transaction speeds with minimal fees, attracting early liquidity of $500M.",
+      "A new decentralized finance protocol on Solana claims to offer 10x faster transaction speeds with minimal fees.",
     url: "#",
     image: "https://images.unsplash.com/photo-1620321023374-d1a68fbc720d?w=400",
     publishedAt: new Date(Date.now() - 14400000).toISOString(),
@@ -169,7 +169,7 @@ const SAMPLE_NEWS: NewsArticle[] = [
   {
     title: "Global Crypto Regulation Framework Takes Shape at G20 Summit",
     description:
-      "G20 nations reach preliminary agreement on unified crypto regulation standards, aiming to prevent money laundering while fostering innovation.",
+      "G20 nations reach preliminary agreement on unified crypto regulation standards.",
     url: "#",
     image: "https://images.unsplash.com/photo-1605792657660-596af9009e82?w=400",
     publishedAt: new Date(Date.now() - 18000000).toISOString(),
@@ -178,7 +178,7 @@ const SAMPLE_NEWS: NewsArticle[] = [
   {
     title: "NFT Market Shows Signs of Recovery with New Collections",
     description:
-      "After a prolonged bear market, NFT trading volumes are bouncing back as celebrity-backed collections and gaming NFTs gain renewed interest.",
+      "After a prolonged bear market, NFT trading volumes are bouncing back as gaming NFTs gain renewed interest.",
     url: "#",
     image: "https://images.unsplash.com/photo-1646953281231-1f2f5b70bcc4?w=400",
     publishedAt: new Date(Date.now() - 21600000).toISOString(),
@@ -252,7 +252,8 @@ export function useVlogPostsByCategory(category: VlogCategory) {
     queryFn: async () => {
       if (!actor) return [];
       try {
-        return await actor.getVlogPostsByCategory(category);
+        const posts = await actor.getVlogPosts();
+        return posts.filter((p) => String(p.category) === String(category));
       } catch {
         return [];
       }
@@ -277,6 +278,135 @@ export function useAnnouncements() {
   });
 }
 
+export function useActiveAds() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["active-ads"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return await actor.getActiveAds();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useAdminStats() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["admin-stats"],
+    queryFn: async () => {
+      if (!actor) return null;
+      try {
+        return await actor.getAdminStats();
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function usePendingDeposits() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["pending-deposits"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return await actor.getPendingDeposits();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function usePendingWithdrawals() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["pending-withdrawals"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return await actor.getPendingWithdrawals();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function usePendingEarnRecords() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["pending-earn-records"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return await actor.getPendingEarnRecords();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useUserDeposits() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["user-deposits"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return await actor.getUserDeposits();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useUserWithdrawals() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["user-withdrawals"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return await actor.getUserWithdrawals();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useUserEarnRecords() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["user-earn-records"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return await actor.getUserEarnRecords();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+// Mutations
 export function useCreateVlogPost() {
   const { actor } = useActor();
   const qc = useQueryClient();
@@ -376,5 +506,209 @@ export function useDeleteAnnouncement() {
       return actor.deleteAnnouncement(id);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["announcements"] }),
+  });
+}
+
+export function useCreateAd() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      title: string;
+      description: string;
+      imageUrl: string;
+      linkUrl: string;
+    }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.createAd(
+        data.title,
+        data.description,
+        data.imageUrl,
+        data.linkUrl,
+      );
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["active-ads"] }),
+  });
+}
+
+export function useUpdateAd() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      id: bigint;
+      title: string;
+      description: string;
+      imageUrl: string;
+      linkUrl: string;
+      isActive: boolean;
+    }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.updateAd(
+        data.id,
+        data.title,
+        data.description,
+        data.imageUrl,
+        data.linkUrl,
+        data.isActive,
+      );
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["active-ads"] }),
+  });
+}
+
+export function useDeleteAd() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.deleteAd(id);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["active-ads"] }),
+  });
+}
+
+export function useSubmitDeposit() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      username: string;
+      currency: string;
+      amount: string;
+      txHash: string;
+    }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.submitDepositRequest(
+        data.username,
+        data.currency,
+        data.amount,
+        data.txHash,
+      );
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["user-deposits"] }),
+  });
+}
+
+export function useSubmitWithdrawal() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      username: string;
+      amount: bigint;
+      currency: string;
+      walletAddress: string;
+    }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.submitWithdrawalRequest(
+        data.username,
+        data.amount,
+        data.currency,
+        data.walletAddress,
+      );
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["user-withdrawals"] }),
+  });
+}
+
+export function useClaimEarnForVideo() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { username: string; videoId: bigint }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.claimEarnForVideo(data.username, data.videoId);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["user-earn-records"] }),
+  });
+}
+
+export function useClaimEarnForArticle() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { username: string; articleTitle: string }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.claimEarnForArticle(data.username, data.articleTitle);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["user-earn-records"] }),
+  });
+}
+
+export function useApproveDeposit() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.approveDeposit(id);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pending-deposits"] }),
+  });
+}
+
+export function useRejectDeposit() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.rejectDeposit(id);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pending-deposits"] }),
+  });
+}
+
+export function useApproveWithdrawal() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.approveWithdrawal(id);
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["pending-withdrawals"] }),
+  });
+}
+
+export function useRejectWithdrawal() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.rejectWithdrawal(id);
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["pending-withdrawals"] }),
+  });
+}
+
+export function useApproveEarnRecord() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.approveEarnRecord(id);
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["pending-earn-records"] }),
+  });
+}
+
+export function useRejectEarnRecord() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.rejectEarnRecord(id);
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["pending-earn-records"] }),
   });
 }

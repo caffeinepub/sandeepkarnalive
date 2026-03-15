@@ -7,15 +7,21 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
+import { ThemeProvider } from "next-themes";
 import { Footer } from "./components/Footer";
 import { Navbar } from "./components/Navbar";
+import { AuthProvider } from "./contexts/AuthContext";
 import { Admin } from "./pages/Admin";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { Crypto } from "./pages/Crypto";
+import { Earn } from "./pages/Earn";
 import { Home } from "./pages/Home";
+import { Login } from "./pages/Login";
 import { News } from "./pages/News";
+import { Signup } from "./pages/Signup";
 import { Trading } from "./pages/Trading";
 import { Vlog } from "./pages/Vlog";
+import { Wallet } from "./pages/Wallet";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30000, retry: 1 } },
@@ -58,6 +64,26 @@ const vlogRoute = createRoute({
   path: "/vlog",
   component: Vlog,
 });
+const earnRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/earn",
+  component: Earn,
+});
+const walletRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/wallet",
+  component: Wallet,
+});
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/login",
+  component: Login,
+});
+const signupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/signup",
+  component: Signup,
+});
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin",
@@ -75,6 +101,10 @@ const routeTree = rootRoute.addChildren([
   newsRoute,
   tradingRoute,
   vlogRoute,
+  earnRoute,
+  walletRoute,
+  loginRoute,
+  signupRoute,
   adminRoute,
   adminDashRoute,
 ]);
@@ -89,9 +119,18 @@ declare module "@tanstack/react-router" {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <Toaster richColors position="top-right" />
-    </QueryClientProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="dark"
+      enableSystem={false}
+      storageKey="skl-theme"
+    >
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <RouterProvider router={router} />
+          <Toaster richColors position="top-right" />
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

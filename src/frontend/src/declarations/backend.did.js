@@ -18,6 +18,22 @@ export const VlogCategory = IDL.Variant({
   'trading' : IDL.Null,
   'promo' : IDL.Null,
 });
+export const Ad = IDL.Record({
+  'id' : IDL.Nat,
+  'title' : IDL.Text,
+  'linkUrl' : IDL.Text,
+  'createdAt' : IDL.Int,
+  'description' : IDL.Text,
+  'isActive' : IDL.Bool,
+  'imageUrl' : IDL.Text,
+});
+export const AdminDashboardStats = IDL.Record({
+  'totalPendingWithdrawals' : IDL.Nat,
+  'totalPlatformBalance' : IDL.Nat,
+  'totalPendingDeposits' : IDL.Nat,
+  'totalUsers' : IDL.Nat,
+  'totalPendingEarnRecords' : IDL.Nat,
+});
 export const Announcement = IDL.Record({
   'id' : IDL.Nat,
   'title' : IDL.Text,
@@ -25,6 +41,60 @@ export const Announcement = IDL.Record({
   'createdAt' : IDL.Int,
 });
 export const UserProfile = IDL.Record({ 'name' : IDL.Text });
+export const DepositRequest = IDL.Record({
+  'id' : IDL.Nat,
+  'status' : IDL.Variant({
+    'pending' : IDL.Null,
+    'approved' : IDL.Null,
+    'rejected' : IDL.Null,
+  }),
+  'username' : IDL.Text,
+  'userId' : IDL.Principal,
+  'createdAt' : IDL.Int,
+  'reviewedAt' : IDL.Int,
+  'currency' : IDL.Text,
+  'txHash' : IDL.Text,
+  'amount' : IDL.Text,
+});
+export const EarnRecord = IDL.Record({
+  'id' : IDL.Nat,
+  'status' : IDL.Variant({
+    'pending' : IDL.Null,
+    'approved' : IDL.Null,
+    'rejected' : IDL.Null,
+  }),
+  'contentId' : IDL.Text,
+  'username' : IDL.Text,
+  'userId' : IDL.Principal,
+  'createdAt' : IDL.Int,
+  'taskType' : IDL.Variant({
+    'writeArticle' : IDL.Null,
+    'watchVideo' : IDL.Null,
+  }),
+  'amount' : IDL.Nat,
+});
+export const WithdrawalRequest = IDL.Record({
+  'id' : IDL.Nat,
+  'status' : IDL.Variant({
+    'pending' : IDL.Null,
+    'approved' : IDL.Null,
+    'rejected' : IDL.Null,
+  }),
+  'username' : IDL.Text,
+  'userId' : IDL.Principal,
+  'createdAt' : IDL.Int,
+  'walletAddress' : IDL.Text,
+  'reviewedAt' : IDL.Int,
+  'currency' : IDL.Text,
+  'amount' : IDL.Nat,
+});
+export const UserAccount = IDL.Record({
+  'username' : IDL.Text,
+  'balance' : IDL.Nat,
+  'totalEarned' : IDL.Nat,
+  'passwordHash' : IDL.Vec(IDL.Nat8),
+  'totalDeposited' : IDL.Nat,
+});
 export const VlogPost = IDL.Record({
   'id' : IDL.Nat,
   'title' : IDL.Text,
@@ -55,26 +125,46 @@ export const TransformationOutput = IDL.Record({
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+  'approveDeposit' : IDL.Func([IDL.Nat], [], []),
+  'approveEarnRecord' : IDL.Func([IDL.Nat], [], []),
+  'approveWithdrawal' : IDL.Func([IDL.Nat], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'claimEarnForArticle' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'claimEarnForVideo' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+  'createAd' : IDL.Func([IDL.Text, IDL.Text, IDL.Text, IDL.Text], [], []),
   'createAnnouncement' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'createVlogPost' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Text, IDL.Text, VlogCategory],
       [],
       [],
     ),
+  'deleteAd' : IDL.Func([IDL.Nat], [], []),
   'deleteAnnouncement' : IDL.Func([IDL.Nat], [], []),
   'deleteVlogPost' : IDL.Func([IDL.Nat], [], []),
   'fetchCryptoPrices' : IDL.Func([], [IDL.Text], []),
   'fetchWorldNews' : IDL.Func([], [IDL.Text], []),
+  'getActiveAds' : IDL.Func([], [IDL.Vec(Ad)], ['query']),
+  'getAdminStats' : IDL.Func([], [AdminDashboardStats], ['query']),
   'getAnnouncement' : IDL.Func([IDL.Nat], [Announcement], ['query']),
   'getAnnouncements' : IDL.Func([], [IDL.Vec(Announcement)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getPendingDeposits' : IDL.Func([], [IDL.Vec(DepositRequest)], ['query']),
+  'getPendingEarnRecords' : IDL.Func([], [IDL.Vec(EarnRecord)], ['query']),
+  'getPendingWithdrawals' : IDL.Func(
+      [],
+      [IDL.Vec(WithdrawalRequest)],
+      ['query'],
+    ),
+  'getUserAccount' : IDL.Func([], [IDL.Opt(UserAccount)], ['query']),
+  'getUserDeposits' : IDL.Func([], [IDL.Vec(DepositRequest)], ['query']),
+  'getUserEarnRecords' : IDL.Func([], [IDL.Vec(EarnRecord)], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
       [IDL.Opt(UserProfile)],
       ['query'],
     ),
+  'getUserWithdrawals' : IDL.Func([], [IDL.Vec(WithdrawalRequest)], ['query']),
   'getVlogPost' : IDL.Func([IDL.Nat], [VlogPost], ['query']),
   'getVlogPosts' : IDL.Func([], [IDL.Vec(VlogPost)], ['query']),
   'getVlogPostsByCategory' : IDL.Func(
@@ -83,11 +173,30 @@ export const idlService = IDL.Service({
       ['query'],
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'registerUser' : IDL.Func([IDL.Text, IDL.Vec(IDL.Nat8)], [], []),
+  'rejectDeposit' : IDL.Func([IDL.Nat], [], []),
+  'rejectEarnRecord' : IDL.Func([IDL.Nat], [], []),
+  'rejectWithdrawal' : IDL.Func([IDL.Nat], [], []),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+  'submitDepositRequest' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+      [],
+      [],
+    ),
+  'submitWithdrawalRequest' : IDL.Func(
+      [IDL.Text, IDL.Nat, IDL.Text, IDL.Text],
+      [],
+      [],
+    ),
   'transform' : IDL.Func(
       [TransformationInput],
       [TransformationOutput],
       ['query'],
+    ),
+  'updateAd' : IDL.Func(
+      [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Bool],
+      [],
+      [],
     ),
   'updateAnnouncement' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [], []),
   'updateVlogPost' : IDL.Func(
@@ -110,6 +219,22 @@ export const idlFactory = ({ IDL }) => {
     'trading' : IDL.Null,
     'promo' : IDL.Null,
   });
+  const Ad = IDL.Record({
+    'id' : IDL.Nat,
+    'title' : IDL.Text,
+    'linkUrl' : IDL.Text,
+    'createdAt' : IDL.Int,
+    'description' : IDL.Text,
+    'isActive' : IDL.Bool,
+    'imageUrl' : IDL.Text,
+  });
+  const AdminDashboardStats = IDL.Record({
+    'totalPendingWithdrawals' : IDL.Nat,
+    'totalPlatformBalance' : IDL.Nat,
+    'totalPendingDeposits' : IDL.Nat,
+    'totalUsers' : IDL.Nat,
+    'totalPendingEarnRecords' : IDL.Nat,
+  });
   const Announcement = IDL.Record({
     'id' : IDL.Nat,
     'title' : IDL.Text,
@@ -117,6 +242,60 @@ export const idlFactory = ({ IDL }) => {
     'createdAt' : IDL.Int,
   });
   const UserProfile = IDL.Record({ 'name' : IDL.Text });
+  const DepositRequest = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : IDL.Variant({
+      'pending' : IDL.Null,
+      'approved' : IDL.Null,
+      'rejected' : IDL.Null,
+    }),
+    'username' : IDL.Text,
+    'userId' : IDL.Principal,
+    'createdAt' : IDL.Int,
+    'reviewedAt' : IDL.Int,
+    'currency' : IDL.Text,
+    'txHash' : IDL.Text,
+    'amount' : IDL.Text,
+  });
+  const EarnRecord = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : IDL.Variant({
+      'pending' : IDL.Null,
+      'approved' : IDL.Null,
+      'rejected' : IDL.Null,
+    }),
+    'contentId' : IDL.Text,
+    'username' : IDL.Text,
+    'userId' : IDL.Principal,
+    'createdAt' : IDL.Int,
+    'taskType' : IDL.Variant({
+      'writeArticle' : IDL.Null,
+      'watchVideo' : IDL.Null,
+    }),
+    'amount' : IDL.Nat,
+  });
+  const WithdrawalRequest = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : IDL.Variant({
+      'pending' : IDL.Null,
+      'approved' : IDL.Null,
+      'rejected' : IDL.Null,
+    }),
+    'username' : IDL.Text,
+    'userId' : IDL.Principal,
+    'createdAt' : IDL.Int,
+    'walletAddress' : IDL.Text,
+    'reviewedAt' : IDL.Int,
+    'currency' : IDL.Text,
+    'amount' : IDL.Nat,
+  });
+  const UserAccount = IDL.Record({
+    'username' : IDL.Text,
+    'balance' : IDL.Nat,
+    'totalEarned' : IDL.Nat,
+    'passwordHash' : IDL.Vec(IDL.Nat8),
+    'totalDeposited' : IDL.Nat,
+  });
   const VlogPost = IDL.Record({
     'id' : IDL.Nat,
     'title' : IDL.Text,
@@ -144,24 +323,48 @@ export const idlFactory = ({ IDL }) => {
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+    'approveDeposit' : IDL.Func([IDL.Nat], [], []),
+    'approveEarnRecord' : IDL.Func([IDL.Nat], [], []),
+    'approveWithdrawal' : IDL.Func([IDL.Nat], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'claimEarnForArticle' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'claimEarnForVideo' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+    'createAd' : IDL.Func([IDL.Text, IDL.Text, IDL.Text, IDL.Text], [], []),
     'createAnnouncement' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'createVlogPost' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, IDL.Text, VlogCategory],
         [],
         [],
       ),
+    'deleteAd' : IDL.Func([IDL.Nat], [], []),
     'deleteAnnouncement' : IDL.Func([IDL.Nat], [], []),
     'deleteVlogPost' : IDL.Func([IDL.Nat], [], []),
     'fetchCryptoPrices' : IDL.Func([], [IDL.Text], []),
     'fetchWorldNews' : IDL.Func([], [IDL.Text], []),
+    'getActiveAds' : IDL.Func([], [IDL.Vec(Ad)], ['query']),
+    'getAdminStats' : IDL.Func([], [AdminDashboardStats], ['query']),
     'getAnnouncement' : IDL.Func([IDL.Nat], [Announcement], ['query']),
     'getAnnouncements' : IDL.Func([], [IDL.Vec(Announcement)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getPendingDeposits' : IDL.Func([], [IDL.Vec(DepositRequest)], ['query']),
+    'getPendingEarnRecords' : IDL.Func([], [IDL.Vec(EarnRecord)], ['query']),
+    'getPendingWithdrawals' : IDL.Func(
+        [],
+        [IDL.Vec(WithdrawalRequest)],
+        ['query'],
+      ),
+    'getUserAccount' : IDL.Func([], [IDL.Opt(UserAccount)], ['query']),
+    'getUserDeposits' : IDL.Func([], [IDL.Vec(DepositRequest)], ['query']),
+    'getUserEarnRecords' : IDL.Func([], [IDL.Vec(EarnRecord)], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(UserProfile)],
+        ['query'],
+      ),
+    'getUserWithdrawals' : IDL.Func(
+        [],
+        [IDL.Vec(WithdrawalRequest)],
         ['query'],
       ),
     'getVlogPost' : IDL.Func([IDL.Nat], [VlogPost], ['query']),
@@ -172,11 +375,30 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'registerUser' : IDL.Func([IDL.Text, IDL.Vec(IDL.Nat8)], [], []),
+    'rejectDeposit' : IDL.Func([IDL.Nat], [], []),
+    'rejectEarnRecord' : IDL.Func([IDL.Nat], [], []),
+    'rejectWithdrawal' : IDL.Func([IDL.Nat], [], []),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+    'submitDepositRequest' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [],
+        [],
+      ),
+    'submitWithdrawalRequest' : IDL.Func(
+        [IDL.Text, IDL.Nat, IDL.Text, IDL.Text],
+        [],
+        [],
+      ),
     'transform' : IDL.Func(
         [TransformationInput],
         [TransformationOutput],
         ['query'],
+      ),
+    'updateAd' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Bool],
+        [],
+        [],
       ),
     'updateAnnouncement' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [], []),
     'updateVlogPost' : IDL.Func(
