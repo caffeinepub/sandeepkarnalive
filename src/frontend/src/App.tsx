@@ -18,6 +18,7 @@ import { Earn } from "./pages/Earn";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { News } from "./pages/News";
+import { Profile } from "./pages/Profile";
 import { Signup } from "./pages/Signup";
 import { Trading } from "./pages/Trading";
 import { Vlog } from "./pages/Vlog";
@@ -94,6 +95,11 @@ const adminDashRoute = createRoute({
   path: "/admin/dashboard",
   component: AdminDashboard,
 });
+const profileRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/profile",
+  component: Profile,
+});
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -107,6 +113,7 @@ const routeTree = rootRoute.addChildren([
   signupRoute,
   adminRoute,
   adminDashRoute,
+  profileRoute,
 ]);
 
 const router = createRouter({ routeTree });

@@ -3,30 +3,20 @@ import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
-  BarChart2,
   Coins,
   Edit3,
   ExternalLink,
   Newspaper,
   Play,
-  TrendingDown,
   TrendingUp,
 } from "lucide-react";
 import { motion } from "motion/react";
 import {
   useActiveAds,
-  useCryptoPrices,
+  useAnnouncements,
   useVlogPosts,
   useWorldNews,
 } from "../hooks/useQueries";
-
-function formatPrice(n: number) {
-  if (n >= 1000)
-    return `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-  if (n >= 1)
-    return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-  return `$${n.toFixed(4)}`;
-}
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -37,21 +27,30 @@ function timeAgo(dateStr: string) {
 }
 
 export function Home() {
-  const { data: coins = [] } = useCryptoPrices();
   const { data: news = [] } = useWorldNews();
   const { data: posts = [] } = useVlogPosts();
   const { data: ads = [] } = useActiveAds();
+  const { data: announcements = [] } = useAnnouncements();
 
-  const marqueeItems = [
-    ...coins.map((c) => ({ type: "coin" as const, data: c })),
+  const tickerItems = [
+    ...announcements.map((a) => ({ type: "announcement" as const, data: a })),
     ...ads.map((a) => ({ type: "ad" as const, data: a })),
   ];
-  const marqueeDouble = [...marqueeItems, ...marqueeItems];
+  const tickerDouble =
+    tickerItems.length > 0 ? [...tickerItems, ...tickerItems] : null;
 
   const PLACEHOLDER_VLOGS = [
-    "My Crypto Trading Journey - Month 1",
-    "Top 5 Altcoins for 2025",
-    "Day Trading BTC Live Session",
+    {
+      title: "My Crypto Trading Journey - Month 1",
+      date: "Mar 10, 2026",
+      thumb: null,
+    },
+    {
+      title: "Top 5 Altcoins for 2025 Bull Run",
+      date: "Mar 8, 2026",
+      thumb: null,
+    },
+    { title: "Day Trading BTC Live Session", date: "Mar 5, 2026", thumb: null },
   ];
 
   return (
@@ -76,15 +75,13 @@ export function Home() {
         </div>
         <div className="max-w-5xl mx-auto text-center relative z-10">
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.6 }}
+            className="inline-flex items-center gap-2 bg-gold/10 border border-gold/30 rounded-full px-4 py-2 text-xs font-semibold text-gold mb-6"
           >
-            <img
-              src="/assets/generated/logo-transparent.dim_300x80.png"
-              alt="SandeepKarnaLive"
-              className="mx-auto mb-8 h-16 object-contain"
-            />
+            <TrendingUp className="w-3.5 h-3.5" />
+            SANDEEP KARNA CRYPTO EMPIRE
           </motion.div>
           <motion.h1
             initial={{ opacity: 0, y: 30 }}
@@ -103,7 +100,7 @@ export function Home() {
             className="text-lg text-foreground/60 mb-10 max-w-2xl mx-auto"
           >
             Your daily source for crypto analysis, trading strategies, market
-            news, and behind-the-scenes vlog content.
+            news, vlog content, and real USDT earning opportunities.
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -111,13 +108,17 @@ export function Home() {
             transition={{ duration: 0.6, delay: 0.3 }}
             className="flex flex-wrap gap-4 justify-center"
           >
-            <Link to="/crypto">
-              <Button className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold hover:opacity-90 px-6 py-2.5">
-                <BarChart2 className="w-4 h-4 mr-2" /> Live Crypto
+            <Link to="/vlog">
+              <Button
+                data-ocid="home.primary_button"
+                className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold hover:opacity-90 px-6 py-2.5"
+              >
+                <Play className="w-4 h-4 mr-2" /> Watch Vlogs
               </Button>
             </Link>
             <Link to="/news">
               <Button
+                data-ocid="home.secondary_button"
                 variant="outline"
                 className="border-gold/30 text-gold hover:bg-gold/5 px-6 py-2.5"
               >
@@ -126,6 +127,7 @@ export function Home() {
             </Link>
             <Link to="/earn">
               <Button
+                data-ocid="home.secondary_button"
                 variant="outline"
                 className="border-orange-brand/30 text-orange-brand hover:bg-orange-brand/5 px-6 py-2.5"
               >
@@ -136,63 +138,79 @@ export function Home() {
         </div>
       </section>
 
-      {/* TICKER: coins + ads */}
-      <div
-        className="border-y border-gold/15 py-3 overflow-hidden"
-        style={{ background: "rgba(245,158,11,0.03)" }}
-      >
-        <div className="animate-marquee">
-          {marqueeDouble.map((item, i) =>
-            item.type === "coin" ? (
-              // biome-ignore lint/suspicious/noArrayIndexKey: marquee duplication requires index keys
-              <span
-                key={`coin-${item.data.id}-${i}`}
-                className="inline-flex items-center gap-2 mx-6 text-sm"
-              >
-                <img
-                  src={item.data.image}
-                  alt={item.data.symbol}
-                  className="w-4 h-4 rounded-full"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-                <span className="font-mono font-semibold text-foreground/80">
-                  {item.data.symbol.toUpperCase()}
-                </span>
-                <span className="font-mono font-bold text-gold">
-                  {formatPrice(item.data.current_price)}
-                </span>
+      {/* TICKER: announcements + ads */}
+      {tickerDouble && tickerDouble.length > 0 ? (
+        <div
+          className="border-y border-gold/15 py-3 overflow-hidden"
+          style={{ background: "rgba(245,158,11,0.03)" }}
+        >
+          <div className="animate-marquee">
+            {tickerDouble.map((item, i) =>
+              item.type === "announcement" ? (
+                // biome-ignore lint/suspicious/noArrayIndexKey: marquee duplication requires index keys
                 <span
-                  className={
-                    item.data.price_change_percentage_24h >= 0
-                      ? "positive text-xs"
-                      : "negative text-xs"
-                  }
+                  key={`ann-${String(item.data.id)}-${i}`}
+                  className="inline-flex items-center gap-2 mx-6 text-sm"
                 >
-                  {item.data.price_change_percentage_24h >= 0 ? "▲" : "▼"}{" "}
-                  {Math.abs(item.data.price_change_percentage_24h).toFixed(2)}%
+                  <Badge className="bg-gold/20 text-gold border-gold/30 text-xs px-1.5 py-0">
+                    NEWS
+                  </Badge>
+                  <span className="text-foreground/80 font-medium">
+                    {item.data.title}
+                  </span>
+                  <span className="text-foreground/20">|</span>
                 </span>
-                <span className="text-foreground/20">|</span>
-              </span>
-            ) : (
-              // biome-ignore lint/suspicious/noArrayIndexKey: marquee duplication requires index keys
-              <span
-                key={`ad-${String(item.data.id)}-${i}`}
-                className="inline-flex items-center gap-2 mx-6 text-sm"
-              >
-                <Badge className="bg-orange-brand/20 text-orange-brand border-orange-brand/30 text-xs px-1.5 py-0">
-                  PROMO
-                </Badge>
-                <span className="text-foreground/80 font-medium">
-                  {item.data.title}
+              ) : (
+                // biome-ignore lint/suspicious/noArrayIndexKey: marquee duplication requires index keys
+                <span
+                  key={`ad-${String(item.data.id)}-${i}`}
+                  className="inline-flex items-center gap-2 mx-6 text-sm"
+                >
+                  <Badge className="bg-orange-brand/20 text-orange-brand border-orange-brand/30 text-xs px-1.5 py-0">
+                    PROMO
+                  </Badge>
+                  <span className="text-foreground/80 font-medium">
+                    {item.data.title}
+                  </span>
+                  <span className="text-foreground/20">|</span>
                 </span>
-                <span className="text-foreground/20">|</span>
-              </span>
-            ),
-          )}
+              ),
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div
+          className="border-y border-gold/15 py-3 overflow-hidden"
+          style={{ background: "rgba(245,158,11,0.03)" }}
+        >
+          <div className="animate-marquee">
+            {[
+              "🚀 Welcome to Sandeep Karna Crypto Empire!",
+              "📈 Daily trading insights and crypto analysis",
+              "💰 Watch videos and earn 0.1 USDT per video",
+              "📰 Live world news updates every 5 minutes",
+              "🎬 New vlog episodes every day - subscribe now!",
+            ]
+              .concat([
+                "🚀 Welcome to Sandeep Karna Crypto Empire!",
+                "📈 Daily trading insights and crypto analysis",
+                "💰 Watch videos and earn 0.1 USDT per video",
+                "📰 Live world news updates every 5 minutes",
+                "🎬 New vlog episodes every day - subscribe now!",
+              ])
+              .map((text, i) => (
+                <span
+                  // biome-ignore lint/suspicious/noArrayIndexKey: marquee duplication requires index keys
+                  key={i}
+                  className="inline-flex items-center gap-2 mx-8 text-sm text-foreground/70"
+                >
+                  {text}
+                  <span className="text-foreground/20 ml-4">•</span>
+                </span>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* ADS & PROMOTIONS SECTION */}
       {ads.length > 0 && (
@@ -274,7 +292,7 @@ export function Home() {
               Watch to Earn
             </h3>
             <p className="text-foreground/60 text-sm mb-4 flex-1">
-              Watch Sandeep's daily vlogs and earn{" "}
+              Watch Sandeep&apos;s daily vlogs and earn{" "}
               <strong className="text-gold">0.1 USDT</strong> per video. Minimum
               withdrawal $10 USD.
             </p>
@@ -295,8 +313,8 @@ export function Home() {
             data-ocid="home.card"
             className="glass-card glass-card-hover rounded-2xl p-6 flex flex-col"
           >
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-4">
-              <Edit3 className="w-6 h-6 text-white" />
+            <div className="w-12 h-12 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center mb-4">
+              <Edit3 className="w-6 h-6 text-blue-400" />
             </div>
             <h3 className="font-display text-xl font-bold mb-2">
               Write to Earn
@@ -315,71 +333,6 @@ export function Home() {
               </Button>
             </Link>
           </motion.div>
-        </div>
-      </section>
-
-      {/* CRYPTO PREVIEW */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="font-display text-3xl font-bold">
-              Live <span className="gold-gradient">Crypto Prices</span>
-            </h2>
-            <p className="text-foreground/50 text-sm mt-1">
-              Top cryptocurrencies by market cap
-            </p>
-          </div>
-          <Link to="/crypto">
-            <Button
-              variant="ghost"
-              className="text-gold hover:text-gold/80 hover:bg-gold/5"
-            >
-              View All <ArrowRight className="w-4 h-4 ml-1" />
-            </Button>
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {coins.slice(0, 5).map((coin, i) => (
-            <motion.div
-              key={coin.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.07 }}
-              className="glass-card glass-card-hover rounded-xl p-4 transition-all duration-300"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <img
-                  src={coin.image}
-                  alt={coin.name}
-                  className="w-7 h-7 rounded-full"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-                <div>
-                  <div className="font-semibold text-xs text-foreground/80">
-                    {coin.name}
-                  </div>
-                  <div className="text-xs text-foreground/40 uppercase">
-                    {coin.symbol}
-                  </div>
-                </div>
-              </div>
-              <div className="font-mono font-bold text-sm text-gold">
-                {formatPrice(coin.current_price)}
-              </div>
-              <div
-                className={`flex items-center gap-1 text-xs mt-1 ${coin.price_change_percentage_24h >= 0 ? "positive" : "negative"}`}
-              >
-                {coin.price_change_percentage_24h >= 0 ? (
-                  <TrendingUp className="w-3 h-3" />
-                ) : (
-                  <TrendingDown className="w-3 h-3" />
-                )}
-                {Math.abs(coin.price_change_percentage_24h).toFixed(2)}%
-              </div>
-            </motion.div>
-          ))}
         </div>
       </section>
 
@@ -426,23 +379,18 @@ export function Home() {
                       </div>
                     </div>
                   ))
-                : PLACEHOLDER_VLOGS.map((title, i) => (
+                : PLACEHOLDER_VLOGS.map((item) => (
                     <div
-                      key={title}
+                      key={item.title}
                       className="glass-card glass-card-hover rounded-xl p-4 flex gap-4 transition-all"
                     >
-                      <div
-                        className="w-20 h-16 rounded-lg flex-shrink-0"
-                        style={{
-                          background: `linear-gradient(135deg, rgba(245,158,11,0.${2 + i}) 0%, rgba(249,115,22,0.${1 + i}) 100%)`,
-                        }}
-                      />
+                      <div className="w-20 h-16 rounded-lg flex-shrink-0 bg-gradient-to-br from-gold/30 to-orange-brand/20" />
                       <div>
                         <div className="font-semibold text-sm text-foreground/90">
-                          {title}
+                          {item.title}
                         </div>
                         <div className="text-xs text-foreground/40 mt-1">
-                          Mar {10 + i}, 2026
+                          {item.date}
                         </div>
                       </div>
                     </div>
@@ -498,6 +446,66 @@ export function Home() {
               ))}
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* TRADING JOURNEY PREVIEW */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 pb-20">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="font-display text-2xl font-bold">
+            Trading <span className="gold-gradient">Journey</span>
+          </h2>
+          <Link to="/trading">
+            <Button
+              variant="ghost"
+              className="text-gold hover:bg-gold/5 text-sm"
+            >
+              View All <ArrowRight className="w-3 h-3 ml-1" />
+            </Button>
+          </Link>
+        </div>
+        <div className="grid md:grid-cols-3 gap-4">
+          {[
+            {
+              title: "Started with $500 — BTC Long Trade",
+              result: "+42%",
+              positive: true,
+              date: "Jan 2026",
+            },
+            {
+              title: "ETH Swing Trade Analysis",
+              result: "-8%",
+              positive: false,
+              date: "Feb 2026",
+            },
+            {
+              title: "SOL Breakout — Perfect Entry",
+              result: "+67%",
+              positive: true,
+              date: "Mar 2026",
+            },
+          ].map((trade, i) => (
+            <motion.div
+              key={trade.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: i * 0.1 }}
+              className="glass-card rounded-xl p-4"
+            >
+              <div className="flex items-start justify-between mb-2">
+                <span className="text-xs text-foreground/50">{trade.date}</span>
+                <span
+                  className={`font-bold text-sm ${trade.positive ? "positive" : "negative"}`}
+                >
+                  {trade.result}
+                </span>
+              </div>
+              <p className="text-sm font-medium text-foreground/80">
+                {trade.title}
+              </p>
+            </motion.div>
+          ))}
         </div>
       </section>
     </div>

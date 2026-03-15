@@ -10,9 +10,10 @@ const navLinks = [
   { to: "/", label: "Home", ocid: "nav.home_link" },
   { to: "/crypto", label: "Crypto", ocid: "nav.crypto_link" },
   { to: "/news", label: "News", ocid: "nav.news_link" },
-  { to: "/trading", label: "Trading", ocid: "nav.trading_link" },
   { to: "/vlog", label: "Vlog", ocid: "nav.vlog_link" },
-  { to: "/earn", label: "Earn", ocid: "nav.earn_link" },
+  { to: "/trading", label: "Trading", ocid: "nav.trading_link" },
+  { to: "/earn", label: "Earn 💰", ocid: "nav.earn_link" },
+  { to: "/wallet", label: "Wallet", ocid: "nav.wallet_link" },
 ];
 
 export function Navbar() {
@@ -31,17 +32,25 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2 shrink-0">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gold to-orange-brand flex items-center justify-center">
               <TrendingUp className="w-4 h-4 text-navy" />
             </div>
-            <span className="font-display font-bold text-lg gold-gradient">
-              SandeepKarnaLive
+            <div className="hidden sm:block">
+              <span className="font-display font-bold text-sm leading-tight gold-gradient">
+                Sandeep Karna
+              </span>
+              <span className="block font-display text-xs text-orange-brand font-semibold leading-tight">
+                Crypto Empire
+              </span>
+            </div>
+            <span className="sm:hidden font-display font-bold text-sm gold-gradient">
+              SKCE
             </span>
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden lg:flex items-center gap-0.5">
             {navLinks.map((link) => {
               const active =
                 location.pathname === link.to ||
@@ -51,7 +60,7 @@ export function Navbar() {
                   key={link.to}
                   to={link.to}
                   data-ocid={link.ocid}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                  className={`px-3 py-2 rounded-md text-xs font-medium transition-all duration-200 ${
                     active
                       ? "bg-gold/10 text-gold border border-gold/30"
                       : "text-foreground/70 hover:text-gold hover:bg-gold/5"
@@ -64,7 +73,7 @@ export function Navbar() {
           </nav>
 
           {/* Right side */}
-          <div className="hidden md:flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2">
             {/* Theme toggle */}
             <button
               type="button"
@@ -90,9 +99,14 @@ export function Navbar() {
                     <Wallet className="w-3 h-3" />${balanceUSDT}
                   </div>
                 </Link>
-                <span className="text-sm text-foreground/70 font-medium">
-                  {user.username}
-                </span>
+                <Link to="/profile">
+                  <span
+                    data-ocid="nav.link"
+                    className="text-sm text-foreground/70 font-medium hover:text-gold transition-colors"
+                  >
+                    {user.username}
+                  </span>
+                </Link>
                 <Button
                   data-ocid="nav.button"
                   size="sm"
@@ -129,7 +143,7 @@ export function Navbar() {
           </div>
 
           {/* Mobile: theme + hamburger */}
-          <div className="md:hidden flex items-center gap-2">
+          <div className="lg:hidden flex items-center gap-2">
             <button
               type="button"
               data-ocid="nav.toggle"
@@ -161,7 +175,7 @@ export function Navbar() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden border-t border-gold/20"
+            className="lg:hidden border-t border-gold/20"
             style={{ background: "rgba(8,12,24,0.98)" }}
           >
             <div className="px-4 py-3 space-y-1">
@@ -193,6 +207,13 @@ export function Navbar() {
                         <Coins className="w-4 h-4" /> ${balanceUSDT} USDT
                       </div>
                     </Link>
+                    <Link
+                      to="/profile"
+                      onClick={() => setOpen(false)}
+                      className="block px-3 py-2 text-sm text-foreground/70 hover:text-gold"
+                    >
+                      Profile ({user.username})
+                    </Link>
                     <button
                       type="button"
                       onClick={() => {
@@ -201,7 +222,7 @@ export function Navbar() {
                       }}
                       className="block w-full text-left px-3 py-2 text-sm text-red-400"
                     >
-                      Logout ({user.username})
+                      Logout
                     </button>
                   </>
                 ) : (

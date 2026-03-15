@@ -2,21 +2,19 @@ import Nat "mo:core/Nat";
 import Int "mo:core/Int";
 import Text "mo:core/Text";
 import Iter "mo:core/Iter";
-import Time "mo:core/Time";
 import Order "mo:core/Order";
+import Time "mo:core/Time";
 import Array "mo:core/Array";
 import Map "mo:core/Map";
 import Blob "mo:core/Blob";
 import Char "mo:core/Char";
 import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
-import Migration "migration";
+
 import OutCall "http-outcalls/outcall";
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 
-// Use migration module for state transformation
-(with migration = Migration.run)
 actor {
   type VlogCategory = {
     #vlog;
@@ -458,10 +456,14 @@ actor {
       Runtime.trap("Unauthorized: Only users can submit deposit requests");
     };
 
-    // Validate user account
+    // Validate user account and verify username matches
     switch (userAccounts.get(caller)) {
       case (null) { Runtime.trap("User account not found") };
-      case (?_) {
+      case (?account) {
+        if (account.username != username) {
+          Runtime.trap("Username does not match caller's account");
+        };
+
         let request : DepositRequest = {
           id = nextDepositId;
           userId = caller;
@@ -585,10 +587,14 @@ actor {
       Runtime.trap("Unauthorized: Only users can submit withdrawal requests");
     };
 
-    // Validate user account
+    // Validate user account and verify username matches
     switch (userAccounts.get(caller)) {
       case (null) { Runtime.trap("User account not found") };
       case (?account) {
+        if (account.username != username) {
+          Runtime.trap("Username does not match caller's account");
+        };
+
         if (amount < 10000) {
           Runtime.trap("Invalid amount, checkout withdrawal requirements");
         };
@@ -712,10 +718,14 @@ actor {
       Runtime.trap("Unauthorized: Only users can claim earnings");
     };
 
-    // Validate user account
+    // Validate user account and verify username matches
     switch (userAccounts.get(caller)) {
       case (null) { Runtime.trap("User account not found") };
-      case (?_) {
+      case (?account) {
+        if (account.username != username) {
+          Runtime.trap("Username does not match caller's account");
+        };
+
         // Check if this is a valid vlog video
         switch (vlogPosts.get(videoId)) {
           case (null) { Runtime.trap("Vlog post not found") };
@@ -763,10 +773,14 @@ actor {
       Runtime.trap("Unauthorized: Only users can claim earnings");
     };
 
-    // Validate user account
+    // Validate user account and verify username matches
     switch (userAccounts.get(caller)) {
       case (null) { Runtime.trap("User account not found") };
-      case (?_) {
+      case (?account) {
+        if (account.username != username) {
+          Runtime.trap("Username does not match caller's account");
+        };
+
         // Check if user already claimed this article
         let alreadyClaimed = earnRecords.values().toArray().any(
           func(r) {
@@ -920,7 +934,11 @@ actor {
     OutCall.transform(input);
   };
 
-  public shared func fetchCryptoPrices() : async Text {
+  public shared ({ caller }) func fetchCryptoPrices() : async Text {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can fetch crypto prices");
+    };
+
     await OutCall.httpGetRequest(
       "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1",
       [],
@@ -928,7 +946,11 @@ actor {
     );
   };
 
-  public shared func fetchWorldNews() : async Text {
+  public shared ({ caller }) func fetchWorldNews() : async Text {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can fetch world news");
+    };
+
     await OutCall.httpGetRequest(
       "https://gnews.io/api/v4/top-headlines?category=general&lang=en&max=20&apikey=demo",
       [],

@@ -1,54 +1,43 @@
-# SandeepKarnaLive - Major Feature Update
+# Sandeep Karna Crypto Empire
 
 ## Current State
-- Home page with crypto ticker, news preview, vlog preview
-- Crypto prices page (live from CoinGecko)
-- News page (live from GNews)
-- Trading journey page
-- Vlog page with admin-managed posts
-- Admin login/dashboard for managing vlogs and announcements
-- Light theme only
-- No user registration/login
-- No earn features
-- No deposit/withdrawal system
-- No ads/promotion section
+Previous builds failed. Starting fresh with a complete rebuild based on all accumulated requirements.
 
 ## Requested Changes (Diff)
 
 ### Add
-- **Dark theme** with toggle (default dark, light mode available)
-- **User Signup/Login** - register with username + password, login, profile page
-- **Ads & Promotions section** - admin creates ads/promotions shown in crypto ticker area and dedicated section on home page
-- **Write to Earn** - users write articles/posts and earn USDT rewards (admin sets reward per post, approves earnings)
-- **Watch Video to Earn** - users watch vlogs to earn 0.1 USDT per video (max daily limit), admin must approve payout
-- **Deposit system** - users deposit USDT/BTC/ETH/Binance Pay, submit txHash for admin approval
-- **Withdrawal system** - users request withdrawal (min $10 USD), admin approves/rejects
-- **User Balance/Wallet** - each user has a balance that shows earned + deposited amounts
-- **Admin approval flow** - all withdrawals, deposits, earn payouts require admin approval before processing
-- **Admin full control** - manage ads, promotions, earn tasks, user balances, approve/reject all transactions
+- User signup/login system (fixed and working)
+- Admin panel at /admin (username: sandeepkarna321, password: Sandeep@321)
+- Dark theme (default), light/dark toggle
+- Home page: hero banner, vlog previews, news previews, trading journey preview, ads/promotions carousel — NO crypto charts on home
+- Separate Crypto page with live prices (CoinGecko API, auto-refresh 60s)
+- Separate News page with world news (auto-refresh 5 mins)
+- Trading Journey page: timeline posts, admin can add/edit/delete
+- Vlog page: YouTube embed video cards, filterable tabs
+- Earn page: Watch to Earn (0.1 USDT/video, admin approval), Write to Earn (article submission, admin approval)
+- Wallet page (separate): Deposit section showing ETH/BTC/SOL/TRON addresses + Withdrawal requests (min $10, admin approval)
+  - ETH: 0x8778663Dc7A7814eb6d443384fdb23AE180a7F8F
+  - BTC: bc1qaan3fp940gg6hy2nhnuta4d7208x84gfrcxuc6
+  - SOL: G4vAf5wE1o7CnxYEWKPk96Ym9Y3Qd1ZWsU2QNsruG6PX
+  - TRON: TFiaFMNBnDFkLNE9n46jDvtysvU5vLPFL9
+- Ads & Promotions section: admin can add video/photo/URL promotions, displayed on home page
+- Admin panel tabs: Users, Vlogs, News, Trading Posts, Ads/Promotions, Deposits, Withdrawals, Earn Approvals, Settings
+- All user actions (earn claims, withdrawals, deposits) require admin approval before processing
+- Withdrawal requests stored with full details visible in admin panel
+- Settings page: admin can edit deposit addresses, site settings
+- 50+ features for user engagement and earning
 
 ### Modify
-- **Crypto ticker** - also show ads/promotions scrolling alongside crypto prices
-- **Navbar** - add Login/Signup button, theme toggle, user wallet balance if logged in
-- **Home page** - add earn section (Write to Earn + Watch Video to Earn cards), ads section
-- **Admin dashboard** - add tabs for: Vlogs, Announcements, Ads/Promotions, Deposits, Withdrawals, Earn Approvals, User Management
-- **Trading page** - add trading simulator/journal with P&L tracking
+- Home page: remove crypto chart/price section
+- Wallet: separate dedicated page
 
 ### Remove
-- Nothing removed
+- Crypto ticker/charts from home page
 
 ## Implementation Plan
-1. Backend: Add Ad type + CRUD (admin only)
-2. Backend: Add UserAccount type (username, passwordHash, principal, balance, totalEarned, totalDeposited)
-3. Backend: Add DepositRequest type (id, userId, currency, amount, txHash, walletAddress, status, createdAt)
-4. Backend: Add WithdrawalRequest type (id, userId, amount, currency, walletAddress, status, createdAt)
-5. Backend: Add EarnRecord type (id, userId, taskType: watch/write, amount, status: pending/approved/rejected, createdAt)
-6. Backend: Add VideoWatchRecord to track which videos a user has watched (for 0.1 USDT per video)
-7. Backend: Admin methods for approving/rejecting deposits, withdrawals, earn records
-8. Backend: User methods for submitting deposits, withdrawal requests, earn claims
-9. Frontend: Add ThemeProvider with dark/light toggle
-10. Frontend: Add Login/Signup pages and AuthContext
-11. Frontend: Add Earn page (Write to Earn + Watch Video to Earn)
-12. Frontend: Add Wallet page (balance, deposits, withdrawals history)
-13. Frontend: Add Ads/Promotions section to Home and crypto ticker
-14. Frontend: Expand AdminDashboard with all new management tabs
+1. Backend: User auth, posts, vlogs, news, ads, earn tasks, wallet (deposit/withdrawal), admin CRUD for everything
+2. Frontend pages: Home, Crypto, News, Trading, Vlog, Earn, Wallet, Admin, Login, Signup
+3. Admin panel with all management tabs
+4. Dark theme default with toggle
+5. Live crypto prices via CoinGecko public API (http-outcalls from frontend)
+6. Responsive, attractive dark UI design

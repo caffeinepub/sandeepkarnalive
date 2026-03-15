@@ -35,24 +35,34 @@ import {
 
 const DEPOSIT_ADDRESSES = [
   {
+    currency: "ETH",
+    network: "ERC20",
+    address: "0x8778663Dc7A7814eb6d443384fdb23AE180a7F8F",
+  },
+  {
     currency: "USDT",
-    network: "TRC20",
-    address: "TXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    network: "ERC20 (Ethereum)",
+    address: "0x8778663Dc7A7814eb6d443384fdb23AE180a7F8F",
   },
   {
     currency: "BTC",
     network: "Bitcoin",
-    address: "bc1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    address: "bc1qaan3fp940gg6hy2nhnuta4d7208x84gfrcxuc6",
   },
   {
-    currency: "ETH",
-    network: "ERC20",
-    address: "0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    currency: "SOL",
+    network: "Solana",
+    address: "G4vAf5wE1o7CnxYEWKPk96Ym9Y3Qd1ZWsU2QNsruG6PX",
   },
   {
-    currency: "BINANCE_PAY",
-    network: "Binance Pay",
-    address: "Binance ID: 123456789",
+    currency: "USDT",
+    network: "TRC20 (Tron)",
+    address: "TFiaFMNBnDFkLNE9n46jDvtysvU5vLPFL9",
+  },
+  {
+    currency: "TRON",
+    network: "TRC20",
+    address: "TFiaFMNBnDFkLNE9n46jDvtysvU5vLPFL9",
   },
 ];
 
@@ -264,19 +274,25 @@ export function Wallet() {
               <h3 className="font-semibold text-gold mb-3">
                 Our Deposit Addresses
               </h3>
+              <p className="text-xs text-foreground/50 mb-4">
+                Send your crypto to the address below, then submit the
+                transaction hash as proof.
+              </p>
               {DEPOSIT_ADDRESSES.map((addr) => (
                 <div
-                  key={addr.currency}
-                  className="flex items-start justify-between gap-3 py-2 border-b border-border/30 last:border-0"
+                  key={`${addr.currency}-${addr.network}`}
+                  className="flex items-start justify-between gap-3 py-3 border-b border-border/30 last:border-0"
                 >
-                  <div>
-                    <span className="text-xs font-bold bg-gold/20 text-gold px-2 py-0.5 rounded">
-                      {addr.currency}
-                    </span>
-                    <span className="text-xs text-foreground/50 ml-2">
-                      {addr.network}
-                    </span>
-                    <p className="font-mono text-sm text-foreground/80 mt-1 break-all">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-bold bg-gold/20 text-gold px-2 py-0.5 rounded">
+                        {addr.currency}
+                      </span>
+                      <span className="text-xs text-foreground/50">
+                        {addr.network}
+                      </span>
+                    </div>
+                    <p className="font-mono text-xs text-foreground/80 break-all leading-relaxed">
                       {addr.address}
                     </p>
                   </div>
@@ -286,14 +302,21 @@ export function Wallet() {
                     data-ocid="wallet.secondary_button"
                     onClick={() => {
                       navigator.clipboard.writeText(addr.address);
-                      toast.success("Copied!");
+                      toast.success(`${addr.currency} address copied!`);
                     }}
-                    className="shrink-0"
+                    className="shrink-0 text-gold hover:bg-gold/10"
                   >
                     <Copy className="w-4 h-4" />
                   </Button>
                 </div>
               ))}
+              <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <p className="text-xs text-blue-300">
+                  💡 <strong>Binance Pay:</strong> Contact admin via
+                  Telegram/Email for Binance Pay deposits. All deposits require
+                  admin approval before crediting.
+                </p>
+              </div>
             </div>
 
             {/* Deposit form */}
@@ -310,15 +333,17 @@ export function Wallet() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="USDT">USDT</SelectItem>
+                      <SelectItem value="USDT-ERC20">USDT (ERC20)</SelectItem>
+                      <SelectItem value="USDT-TRC20">USDT (TRC20)</SelectItem>
                       <SelectItem value="BTC">Bitcoin (BTC)</SelectItem>
                       <SelectItem value="ETH">Ethereum (ETH)</SelectItem>
-                      <SelectItem value="BINANCE_PAY">Binance Pay</SelectItem>
+                      <SelectItem value="SOL">Solana (SOL)</SelectItem>
+                      <SelectItem value="TRON">TRON (TRX)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Amount</Label>
+                  <Label>Amount (USD value)</Label>
                   <Input
                     data-ocid="wallet.input"
                     placeholder="e.g. 50"
@@ -412,13 +437,14 @@ export function Wallet() {
                       <SelectItem value="USDT">USDT</SelectItem>
                       <SelectItem value="BTC">Bitcoin (BTC)</SelectItem>
                       <SelectItem value="ETH">Ethereum (ETH)</SelectItem>
-                      <SelectItem value="BINANCE_PAY">Binance Pay</SelectItem>
+                      <SelectItem value="SOL">Solana (SOL)</SelectItem>
+                      <SelectItem value="TRON">TRON (TRX)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Wallet Address</Label>
+                <Label>Your Wallet Address</Label>
                 <Input
                   data-ocid="wallet.input"
                   placeholder="Your wallet address / Binance ID"
