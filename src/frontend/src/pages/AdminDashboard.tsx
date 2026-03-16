@@ -1,1300 +1,1963 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useNavigate } from "@tanstack/react-router";
 import {
   BarChart2,
-  CheckCircle,
-  Coins,
-  Edit,
+  Layers,
   Loader2,
   LogOut,
   Megaphone,
   Plus,
-  Settings,
+  Shield,
   Trash2,
   TrendingUp,
-  Video,
-  Wallet,
-  X,
-  XCircle,
+  Users,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { VlogCategory } from "../backend.d";
-import {
-  useActiveAds,
-  useAdminStats,
-  useAnnouncements,
-  useApproveDeposit,
-  useApproveEarnRecord,
-  useApproveWithdrawal,
-  useCreateAd,
-  useCreateAnnouncement,
-  useCreateVlogPost,
-  useDeleteAd,
-  useDeleteAnnouncement,
-  useDeleteVlogPost,
-  usePendingDeposits,
-  usePendingEarnRecords,
-  usePendingWithdrawals,
-  useRejectDeposit,
-  useRejectEarnRecord,
-  useRejectWithdrawal,
-  useUpdateAd,
-  useUpdateAnnouncement,
-  useUpdateVlogPost,
-  useVlogPosts,
-} from "../hooks/useQueries";
 
-const CATEGORY_LABELS: Record<string, string> = {
-  [VlogCategory.vlog]: "Vlog",
-  [VlogCategory.trading]: "Trading",
-  [VlogCategory.promo]: "Promo",
+type Signal = {
+  id: number;
+  asset: string;
+  type: "BUY" | "SELL" | "HOLD";
+  entryPrice: string;
+  targetPrice: string;
+  stopLoss: string;
+  description: string;
+  date: string;
 };
 
-interface VlogForm {
+type Vlog = {
+  id: number;
   title: string;
   description: string;
   videoUrl: string;
   thumbnailUrl: string;
-  category: VlogCategory;
-}
-interface AnnouncementForm {
+  date: string;
+};
+type Announcement = {
+  id: number;
   title: string;
   content: string;
-}
-interface AdForm {
+  date: string;
+};
+type Ad = {
+  id: number;
   title: string;
   description: string;
   imageUrl: string;
+  videoUrl: string;
   linkUrl: string;
-  isActive: boolean;
-}
-
-const emptyVlog: VlogForm = {
-  title: "",
-  description: "",
-  videoUrl: "",
-  thumbnailUrl: "",
-  category: VlogCategory.vlog,
-};
-const emptyAnnouncement: AnnouncementForm = { title: "", content: "" };
-const emptyAd: AdForm = {
-  title: "",
-  description: "",
-  imageUrl: "",
-  linkUrl: "",
-  isActive: true,
+  date: string;
 };
 
-function ApproveRejectRow({
-  onApprove,
-  onReject,
-  isPending,
-}: { onApprove: () => void; onReject: () => void; isPending?: boolean }) {
-  return (
-    <div className="flex gap-2">
-      <Button
-        size="sm"
-        onClick={onApprove}
-        disabled={isPending}
-        className="bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 text-xs h-7"
-      >
-        {isPending ? (
-          <Loader2 className="w-3 h-3 animate-spin" />
-        ) : (
-          <CheckCircle className="w-3 h-3" />
-        )}
-      </Button>
-      <Button
-        size="sm"
-        onClick={onReject}
-        disabled={isPending}
-        className="bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 text-xs h-7"
-      >
-        <XCircle className="w-3 h-3" />
-      </Button>
-    </div>
-  );
+type AdminTask = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  adUrl: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  audioUrl?: string;
+  steps: string[];
+  reward: number;
+  date: string;
+};
+
+type FutureContent = {
+  id: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+  videoUrl: string;
+  linkUrl: string;
+  reward: number;
+  date: string;
+};
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
-export function AdminDashboard() {
+function useAdminCheck() {
   const navigate = useNavigate();
-
   useEffect(() => {
-    if (!localStorage.getItem("skl_admin_session")) {
+    if (localStorage.getItem("sce_admin_logged_in") !== "true") {
       navigate({ to: "/admin" });
     }
   }, [navigate]);
+}
 
-  const handleLogout = () => {
-    localStorage.removeItem("skl_admin_session");
-    navigate({ to: "/admin" });
-  };
+function getSCEUsers() {
+  try {
+    return JSON.parse(localStorage.getItem("sce_users") || "[]");
+  } catch {
+    return [];
+  }
+}
 
-  const { data: posts = [] } = useVlogPosts();
-  const { data: announcements = [] } = useAnnouncements();
-  const { data: ads = [] } = useActiveAds();
-  const { data: stats } = useAdminStats();
-  const { data: pendingDeposits = [] } = usePendingDeposits();
-  const { data: pendingWithdrawals = [] } = usePendingWithdrawals();
-  const { data: pendingEarns = [] } = usePendingEarnRecords();
-
-  const createVlog = useCreateVlogPost();
-  const updateVlog = useUpdateVlogPost();
-  const deleteVlog = useDeleteVlogPost();
-  const createAnn = useCreateAnnouncement();
-  const updateAnn = useUpdateAnnouncement();
-  const deleteAnn = useDeleteAnnouncement();
-  const createAd = useCreateAd();
-  const updateAd = useUpdateAd();
-  const deleteAd = useDeleteAd();
-  const approveDeposit = useApproveDeposit();
-  const rejectDeposit = useRejectDeposit();
-  const approveWithdrawal = useApproveWithdrawal();
-  const rejectWithdrawal = useRejectWithdrawal();
-  const approveEarn = useApproveEarnRecord();
-  const rejectEarn = useRejectEarnRecord();
-
-  // Vlog modal
-  const [vlogOpen, setVlogOpen] = useState(false);
-  const [vlogForm, setVlogForm] = useState<VlogForm>(emptyVlog);
-  const [editVlogId, setEditVlogId] = useState<bigint | null>(null);
-
-  // Announcement modal
-  const [annOpen, setAnnOpen] = useState(false);
-  const [annForm, setAnnForm] = useState<AnnouncementForm>(emptyAnnouncement);
-  const [editAnnId, setEditAnnId] = useState<bigint | null>(null);
-
-  // Ad modal
-  const [adOpen, setAdOpen] = useState(false);
-  const [adForm, setAdForm] = useState<AdForm>(emptyAd);
-  const [editAdId, setEditAdId] = useState<bigint | null>(null);
-
-  // Vlog handlers
-  const openAddVlog = () => {
-    setVlogForm(emptyVlog);
-    setEditVlogId(null);
-    setVlogOpen(true);
-  };
-  const openEditVlog = (post: any) => {
-    setVlogForm({
-      title: post.title,
-      description: post.description,
-      videoUrl: post.videoUrl,
-      thumbnailUrl: post.thumbnailUrl,
-      category: post.category,
-    });
-    setEditVlogId(post.id);
-    setVlogOpen(true);
-  };
-  const handleVlogSubmit = async () => {
-    try {
-      if (editVlogId !== null) {
-        await updateVlog.mutateAsync({ id: editVlogId, ...vlogForm });
-        toast.success("Post updated!");
-      } else {
-        await createVlog.mutateAsync(vlogForm);
-        toast.success("Post created!");
-      }
-      setVlogOpen(false);
-    } catch {
-      toast.error("Failed to save post");
+function getPendingTx() {
+  const users = getSCEUsers();
+  let deposits: any[] = [];
+  let withdrawals: any[] = [];
+  for (const u of users) {
+    const txs = JSON.parse(
+      localStorage.getItem(`sce_tx_${u.username}`) || "[]",
+    );
+    for (const tx of txs) {
+      if (tx.type === "deposit" && tx.status === "pending")
+        deposits.push({ ...tx, username: u.username });
+      if (tx.type === "withdrawal" && tx.status === "pending")
+        withdrawals.push({ ...tx, username: u.username });
     }
-  };
-  const handleDeleteVlog = async (id: bigint) => {
-    try {
-      await deleteVlog.mutateAsync(id);
-      toast.success("Post deleted");
-    } catch {
-      toast.error("Failed to delete");
-    }
-  };
+  }
+  return { deposits, withdrawals };
+}
 
-  // Announcement handlers
-  const openAddAnn = () => {
-    setAnnForm(emptyAnnouncement);
-    setEditAnnId(null);
-    setAnnOpen(true);
-  };
-  const openEditAnn = (ann: any) => {
-    setAnnForm({ title: ann.title, content: ann.content });
-    setEditAnnId(ann.id);
-    setAnnOpen(true);
-  };
-  const handleAnnSubmit = async () => {
-    try {
-      if (editAnnId !== null) {
-        await updateAnn.mutateAsync({ id: editAnnId, ...annForm });
-        toast.success("Updated!");
-      } else {
-        await createAnn.mutateAsync(annForm);
-        toast.success("Created!");
-      }
-      setAnnOpen(false);
-    } catch {
-      toast.error("Failed to save");
-    }
-  };
-  const handleDeleteAnn = async (id: bigint) => {
-    try {
-      await deleteAnn.mutateAsync(id);
-      toast.success("Deleted");
-    } catch {
-      toast.error("Failed to delete");
-    }
-  };
+function loadLS<T>(key: string, def: T): T {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "null") ?? def;
+  } catch {
+    return def;
+  }
+}
+function saveLS(key: string, val: unknown) {
+  localStorage.setItem(key, JSON.stringify(val));
+}
 
-  // Ad handlers
-  const openAddAd = () => {
-    setAdForm(emptyAd);
-    setEditAdId(null);
-    setAdOpen(true);
-  };
-  const openEditAd = (ad: any) => {
+export function AdminDashboard() {
+  useAdminCheck();
+  const navigate = useNavigate();
+
+  const [vlogs, setVlogs] = useState<Vlog[]>(() =>
+    loadLS("sce_admin_vlogs", []),
+  );
+  const [announcements, setAnnouncements] = useState<Announcement[]>(() =>
+    loadLS("sce_admin_announcements", []),
+  );
+  const [ads, setAds] = useState<Ad[]>(() => loadLS("sce_admin_ads", []));
+  const [adminTasks, setAdminTasks] = useState<AdminTask[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("sce_admin_tasks") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [taskForm, setTaskForm] = useState({
+    title: "",
+    description: "",
+    category: "Daily",
+    adUrl: "",
+    imageUrl: "",
+    videoUrl: "",
+    audioUrl: "",
+    steps: "",
+    reward: "0.5",
+  });
+  const [signals, setSignals] = useState<Signal[]>(() =>
+    loadLS("sce_admin_signals", []),
+  );
+  const [loading, setLoading] = useState(false);
+  const [futures, setFutures] = useState<FutureContent[]>(() =>
+    loadLS("sce_admin_futures", []),
+  );
+  const [futureForm, setFutureForm] = useState({
+    title: "",
+    description: "",
+    imageUrl: "",
+    videoUrl: "",
+    linkUrl: "",
+    reward: "0",
+  });
+
+  const users = getSCEUsers();
+  const { deposits, withdrawals } = getPendingTx();
+
+  // Forms
+  const [vlogForm, setVlogForm] = useState({
+    title: "",
+    description: "",
+    videoUrl: "",
+    thumbnailUrl: "",
+  });
+  const [announcementForm, setAnnouncementForm] = useState({
+    title: "",
+    content: "",
+  });
+  const [adForm, setAdForm] = useState({
+    title: "",
+    description: "",
+    imageUrl: "",
+    videoUrl: "",
+    linkUrl: "",
+  });
+  const [signalForm, setSignalForm] = useState<Omit<Signal, "id" | "date">>({
+    asset: "BTC/USDT",
+    type: "BUY",
+    entryPrice: "",
+    targetPrice: "",
+    stopLoss: "",
+    description: "",
+  });
+
+  function logout() {
+    localStorage.removeItem("sce_admin_logged_in");
+    navigate({ to: "/" });
+    toast.success("Admin logged out.");
+  }
+
+  async function handleVlogFileUpload(
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: "videoUrl" | "thumbnailUrl",
+  ) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const b64 = await fileToBase64(file);
+    setVlogForm((prev) => ({ ...prev, [field]: b64 }));
+    toast.success("File uploaded!");
+  }
+
+  async function handleAdFileUpload(
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: "imageUrl" | "videoUrl",
+  ) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const b64 = await fileToBase64(file);
+    setAdForm((prev) => ({ ...prev, [field]: b64 }));
+    toast.success("File uploaded!");
+  }
+
+  async function handleTaskFileUpload(
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: "imageUrl" | "videoUrl" | "audioUrl",
+  ) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const b64 = await fileToBase64(file);
+    setTaskForm((prev) => ({ ...prev, [field]: b64 }));
+    toast.success("File uploaded!");
+  }
+
+  async function handleFutureFileUpload(
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: "imageUrl" | "videoUrl",
+  ) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const b64 = await fileToBase64(file);
+    setFutureForm((prev) => ({ ...prev, [field]: b64 }));
+    toast.success("File uploaded!");
+  }
+
+  function createVlog(e: React.FormEvent) {
+    e.preventDefault();
+    if (!vlogForm.title) {
+      toast.error("Title required");
+      return;
+    }
+    setLoading(true);
+    const newVlog: Vlog = {
+      ...vlogForm,
+      id: Date.now(),
+      date: new Date().toISOString().slice(0, 10),
+    };
+    const updated = [newVlog, ...vlogs];
+    setVlogs(updated);
+    saveLS("sce_admin_vlogs", updated);
+    toast.success("Vlog created!");
+    setVlogForm({ title: "", description: "", videoUrl: "", thumbnailUrl: "" });
+    setLoading(false);
+  }
+
+  function deleteVlog(id: number) {
+    const updated = vlogs.filter((v) => v.id !== id);
+    setVlogs(updated);
+    saveLS("sce_admin_vlogs", updated);
+    toast.success("Vlog deleted.");
+  }
+
+  function createAnnouncement(e: React.FormEvent) {
+    e.preventDefault();
+    if (!announcementForm.title) {
+      toast.error("Title required");
+      return;
+    }
+    const newA: Announcement = {
+      ...announcementForm,
+      id: Date.now(),
+      date: new Date().toISOString().slice(0, 10),
+    };
+    const updated = [newA, ...announcements];
+    setAnnouncements(updated);
+    saveLS("sce_admin_announcements", updated);
+    toast.success("Announcement created!");
+    setAnnouncementForm({ title: "", content: "" });
+  }
+
+  function deleteAnnouncement(id: number) {
+    const updated = announcements.filter((a) => a.id !== id);
+    setAnnouncements(updated);
+    saveLS("sce_admin_announcements", updated);
+    toast.success("Deleted.");
+  }
+
+  function createAd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!adForm.title) {
+      toast.error("Title required");
+      return;
+    }
+    setLoading(true);
+    const newAd: Ad = {
+      ...adForm,
+      id: Date.now(),
+      date: new Date().toISOString().slice(0, 10),
+    };
+    const updated = [newAd, ...ads];
+    setAds(updated);
+    saveLS("sce_admin_ads", updated);
+    toast.success("Ad created!");
     setAdForm({
-      title: ad.title,
-      description: ad.description,
-      imageUrl: ad.imageUrl,
-      linkUrl: ad.linkUrl,
-      isActive: ad.isActive,
+      title: "",
+      description: "",
+      imageUrl: "",
+      videoUrl: "",
+      linkUrl: "",
     });
-    setEditAdId(ad.id);
-    setAdOpen(true);
-  };
-  const handleAdSubmit = async () => {
-    try {
-      if (editAdId !== null) {
-        await updateAd.mutateAsync({ id: editAdId, ...adForm });
-        toast.success("Ad updated!");
-      } else {
-        await createAd.mutateAsync(adForm);
-        toast.success("Ad created!");
-      }
-      setAdOpen(false);
-    } catch {
-      toast.error("Failed to save ad");
+    setLoading(false);
+  }
+
+  function deleteAd(id: number) {
+    const updated = ads.filter((a) => a.id !== id);
+    setAds(updated);
+    saveLS("sce_admin_ads", updated);
+    toast.success("Ad deleted.");
+  }
+
+  function addSignal(e: React.FormEvent) {
+    e.preventDefault();
+    if (!signalForm.asset || !signalForm.entryPrice) {
+      toast.error("Fill required fields");
+      return;
     }
-  };
-  const handleDeleteAd = async (id: bigint) => {
-    try {
-      await deleteAd.mutateAsync(id);
-      toast.success("Ad deleted");
-    } catch {
-      toast.error("Failed to delete");
-    }
-  };
+    const newSig: Signal = {
+      ...signalForm,
+      id: Date.now(),
+      date: new Date().toISOString().slice(0, 10),
+    };
+    const updated = [newSig, ...signals];
+    setSignals(updated);
+    saveLS("sce_admin_signals", updated);
+    toast.success("Signal added!");
+    setSignalForm({
+      asset: "BTC/USDT",
+      type: "BUY",
+      entryPrice: "",
+      targetPrice: "",
+      stopLoss: "",
+      description: "",
+    });
+  }
+
+  function deleteSignal(id: number) {
+    const updated = signals.filter((s) => s.id !== id);
+    setSignals(updated);
+    saveLS("sce_admin_signals", updated);
+    toast.success("Signal removed.");
+  }
+
+  const stats = [
+    { label: "Total Users", value: users.length, icon: Users },
+    { label: "Pending Deposits", value: deposits.length, icon: BarChart2 },
+    {
+      label: "Pending Withdrawals",
+      value: withdrawals.length,
+      icon: TrendingUp,
+    },
+    { label: "Announcements", value: announcements.length, icon: Megaphone },
+  ];
+
+  const formInput = (
+    label: string,
+    value: string,
+    onChange: (v: string) => void,
+    placeholder = "",
+    type = "text",
+  ) => (
+    <div className="space-y-1">
+      <Label className="text-xs text-foreground/70">{label}</Label>
+      <Input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-background/50 border-border/60 focus:border-gold/50 h-9 text-sm"
+      />
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-mesh pt-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between mb-8"
-        >
+    <div className="min-h-screen bg-mesh pt-16 pb-16">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold to-orange-brand flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-navy" />
-            </div>
-            <div>
-              <h1 className="font-display text-2xl font-bold gold-gradient">
-                Admin Dashboard
-              </h1>
-              <p className="text-xs text-foreground/40">
-                SandeepKarnaLive Management
-              </p>
-            </div>
+            <Shield className="w-7 h-7 text-red-400" />
+            <h1 className="font-display text-2xl font-bold text-foreground">
+              Admin Dashboard
+            </h1>
           </div>
           <Button
-            variant="outline"
-            onClick={handleLogout}
-            className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+            data-ocid="admin.button"
+            onClick={logout}
+            variant="ghost"
+            className="text-red-400 hover:bg-red-500/10"
           >
             <LogOut className="w-4 h-4 mr-2" /> Logout
           </Button>
-        </motion.div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
-          {[
-            {
-              label: "Users",
-              value: stats ? String(stats.totalUsers) : String(posts.length),
-              icon: BarChart2,
-            },
-            {
-              label: "Pending Deposits",
-              value: stats
-                ? String(stats.totalPendingDeposits)
-                : String(pendingDeposits.length),
-              icon: Wallet,
-            },
-            {
-              label: "Pending Withdrawals",
-              value: stats
-                ? String(stats.totalPendingWithdrawals)
-                : String(pendingWithdrawals.length),
-              icon: Wallet,
-            },
-            {
-              label: "Pending Earns",
-              value: stats
-                ? String(stats.totalPendingEarnRecords)
-                : String(pendingEarns.length),
-              icon: Coins,
-            },
-            { label: "Vlog Posts", value: String(posts.length), icon: Video },
-          ].map((s) => (
-            <div
-              key={s.label}
-              className="glass-card rounded-xl p-3 flex items-center gap-2"
-            >
-              <div className="w-8 h-8 rounded-lg bg-gold/10 flex items-center justify-center shrink-0">
-                <s.icon className="w-4 h-4 text-gold" />
-              </div>
-              <div>
-                <div className="font-bold text-base text-foreground">
-                  {s.value}
-                </div>
-                <div className="text-xs text-foreground/40 leading-tight">
-                  {s.label}
-                </div>
-              </div>
-            </div>
-          ))}
         </div>
 
-        {/* Main Tabs */}
-        <Tabs defaultValue="posts">
-          <TabsList className="bg-navy-card border border-gold/15 mb-6 flex-wrap h-auto gap-1 p-1">
-            {[
-              { value: "posts", label: "Vlogs", icon: Video },
-              {
-                value: "announcements",
-                label: "Announcements",
-                icon: Megaphone,
-              },
-              { value: "ads", label: "Ads & Promo", icon: BarChart2 },
-              { value: "deposits", label: "Deposits", icon: Wallet },
-              { value: "withdrawals", label: "Withdrawals", icon: Wallet },
-              { value: "earns", label: "Earn Approvals", icon: Coins },
-              { value: "settings", label: "Settings", icon: Settings },
-            ].map((t) => (
-              <TabsTrigger
-                key={t.value}
-                value={t.value}
-                data-ocid={`admin.${t.value}.tab`}
-                className="data-[state=active]:bg-gold/10 data-[state=active]:text-gold text-xs sm:text-sm"
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          {stats.map((s) => {
+            const Icon = s.icon;
+            return (
+              <div
+                key={s.label}
+                className="glass-card rounded-xl p-4 text-center"
               >
-                <t.icon className="w-3.5 h-3.5 mr-1.5" /> {t.label}
+                <Icon className="w-5 h-5 text-gold mx-auto mb-2" />
+                <div className="font-display text-2xl font-bold text-gold">
+                  {s.value}
+                </div>
+                <div className="text-xs text-muted-foreground">{s.label}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <Tabs defaultValue="overview" data-ocid="admin.tab">
+          <TabsList className="bg-background/50 border border-border/50 flex-wrap h-auto gap-1 mb-6">
+            {[
+              ["overview", "Overview"],
+              ["vlogs", "Vlogs"],
+              ["announcements", "Announcements"],
+              ["ads", "Ads/Promos"],
+              ["signals", "Signals"],
+              ["tasks", "Tasks"],
+              ["deposits", `Deposits (${deposits.length})`],
+              ["withdrawals", `Withdrawals (${withdrawals.length})`],
+              ["futures", "Futures"],
+              ["users", "Users"],
+            ].map(([val, label]) => (
+              <TabsTrigger
+                key={val}
+                value={val}
+                data-ocid="admin.tab"
+                className="data-[state=active]:bg-gold data-[state=active]:text-navy text-xs"
+              >
+                {label}
               </TabsTrigger>
             ))}
           </TabsList>
 
-          {/* === VLOG POSTS === */}
-          <TabsContent value="posts">
-            <div className="glass-card rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between p-4 border-b border-gold/10">
-                <h2 className="font-semibold text-foreground/80">
-                  Vlog Posts ({posts.length})
-                </h2>
-                <Button
-                  data-ocid="admin.vlog.add_button"
-                  onClick={openAddVlog}
-                  className="bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20 text-sm"
-                >
-                  <Plus className="w-4 h-4 mr-1.5" /> Add Post
-                </Button>
-              </div>
-              {posts.length === 0 ? (
-                <div
-                  data-ocid="admin.vlog.empty_state"
-                  className="text-center py-12 text-foreground/40"
-                >
-                  <Video className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                  <p>No posts yet. Add your first vlog post!</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gold/10 hover:bg-transparent">
-                      <TableHead className="text-foreground/50">
-                        Title
-                      </TableHead>
-                      <TableHead className="text-foreground/50">
-                        Category
-                      </TableHead>
-                      <TableHead className="text-foreground/50">Date</TableHead>
-                      <TableHead className="text-foreground/50 text-right">
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {posts.map((post, i) => (
-                      <TableRow
-                        key={String(post.id)}
-                        data-ocid={`admin.vlog.row.${i + 1}`}
-                        className="border-gold/5 hover:bg-gold/3"
+          {/* Overview */}
+          <TabsContent value="overview">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-3">
+                  Registered Users
+                </h3>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {users.length === 0 ? (
+                    <div
+                      data-ocid="admin.empty_state"
+                      className="text-muted-foreground text-sm"
+                    >
+                      No users yet.
+                    </div>
+                  ) : (
+                    users.map((u: any, i: number) => (
+                      <div
+                        key={u.username + String(i)}
+                        className="flex justify-between items-center text-sm py-1 border-b border-border/20"
                       >
-                        <TableCell className="text-foreground/80 font-medium max-w-xs truncate">
-                          {post.title}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className="bg-gold/10 text-gold border-gold/20 text-xs">
-                            {CATEGORY_LABELS[String(post.category)] ||
-                              String(post.category)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-foreground/40 text-sm">
-                          {new Date(
-                            Number(post.createdAt) / 1000000,
-                          ).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              data-ocid={`admin.vlog.edit_button.${i + 1}`}
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openEditVlog(post)}
-                              className="text-gold/60 hover:text-gold h-7 w-7 p-0"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                              data-ocid={`admin.vlog.delete_button.${i + 1}`}
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteVlog(post.id)}
-                              className="text-red-400/60 hover:text-red-400 h-7 w-7 p-0"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+                        <span className="text-foreground">{u.username}</span>
+                        <span className="text-muted-foreground text-xs">
+                          {u.email}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className="text-xs border-gold/30 text-gold"
+                        >
+                          ${(u.balance || 0).toFixed(2)}
+                        </Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-3">
+                  Quick Stats
+                </h3>
+                <div className="space-y-3">
+                  {[
+                    { label: "Total Users", value: users.length },
+                    { label: "Total Vlogs", value: vlogs.length },
+                    { label: "Total Ads", value: ads.length },
+                    { label: "Active Signals", value: signals.length },
+                    { label: "Pending Deposits", value: deposits.length },
+                    { label: "Pending Withdrawals", value: withdrawals.length },
+                  ].map((r) => (
+                    <div key={r.label} className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{r.label}</span>
+                      <span className="font-bold text-gold">{r.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </TabsContent>
 
-          {/* === ANNOUNCEMENTS === */}
+          {/* Vlogs */}
+          <TabsContent value="vlogs">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-4">
+                  Add Vlog
+                </h3>
+                <form onSubmit={createVlog} className="space-y-3">
+                  {formInput(
+                    "Title *",
+                    vlogForm.title,
+                    (v) => setVlogForm({ ...vlogForm, title: v }),
+                    "Vlog title",
+                  )}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-foreground/70">
+                      Upload Video File
+                    </Label>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      data-ocid="admin.upload_button"
+                      onChange={(e) => handleVlogFileUpload(e, "videoUrl")}
+                      className="w-full text-xs text-muted-foreground bg-background/50 border border-border/60 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Or paste URL below:
+                    </p>
+                    <Input
+                      type="text"
+                      value={vlogForm.videoUrl}
+                      placeholder="YouTube or direct video URL"
+                      onChange={(e) =>
+                        setVlogForm({ ...vlogForm, videoUrl: e.target.value })
+                      }
+                      className="bg-background/50 border-border/60 focus:border-gold/50 h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-foreground/70">
+                      Upload Thumbnail Image
+                    </Label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      data-ocid="admin.upload_button"
+                      onChange={(e) => handleVlogFileUpload(e, "thumbnailUrl")}
+                      className="w-full text-xs text-muted-foreground bg-background/50 border border-border/60 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Or paste thumbnail URL below:
+                    </p>
+                    <Input
+                      type="text"
+                      value={vlogForm.thumbnailUrl}
+                      placeholder="Image URL for thumbnail"
+                      onChange={(e) =>
+                        setVlogForm({
+                          ...vlogForm,
+                          thumbnailUrl: e.target.value,
+                        })
+                      }
+                      className="bg-background/50 border-border/60 focus:border-gold/50 h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-foreground/70">
+                      Description
+                    </Label>
+                    <Textarea
+                      value={vlogForm.description}
+                      onChange={(e) =>
+                        setVlogForm({
+                          ...vlogForm,
+                          description: e.target.value,
+                        })
+                      }
+                      className="bg-background/50 border-border/60 focus:border-gold/50 text-sm h-20 resize-none"
+                      placeholder="Vlog description"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    data-ocid="admin.submit_button"
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-gold to-orange-brand text-navy font-bold h-9 text-sm"
+                  >
+                    {loading ? (
+                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    ) : (
+                      <Plus className="w-3 h-3 mr-1" />
+                    )}{" "}
+                    Add Vlog
+                  </Button>
+                </form>
+              </div>
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-4">
+                  All Vlogs ({vlogs.length})
+                </h3>
+                <div
+                  className="space-y-3 max-h-80 overflow-y-auto"
+                  data-ocid="admin.list"
+                >
+                  {vlogs.length === 0 ? (
+                    <div
+                      data-ocid="admin.empty_state"
+                      className="text-muted-foreground text-sm"
+                    >
+                      No vlogs yet.
+                    </div>
+                  ) : (
+                    vlogs.map((v, i) => (
+                      <div
+                        key={v.id}
+                        data-ocid={`admin.item.${i + 1}`}
+                        className="flex items-center justify-between py-2 border-b border-border/20"
+                      >
+                        <div className="flex-1 mr-2">
+                          <div className="text-sm text-foreground font-medium truncate">
+                            {v.title}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {v.date}
+                          </div>
+                        </div>
+                        <Button
+                          data-ocid="admin.delete_button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => deleteVlog(v.id)}
+                          className="text-red-400 hover:bg-red-500/10 h-7 w-7 p-0 shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Announcements */}
           <TabsContent value="announcements">
-            <div className="glass-card rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between p-4 border-b border-gold/10">
-                <h2 className="font-semibold text-foreground/80">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-4">
+                  Add Announcement
+                </h3>
+                <form onSubmit={createAnnouncement} className="space-y-3">
+                  {formInput(
+                    "Title *",
+                    announcementForm.title,
+                    (v) =>
+                      setAnnouncementForm({ ...announcementForm, title: v }),
+                    "Announcement title",
+                  )}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-foreground/70">
+                      Content
+                    </Label>
+                    <Textarea
+                      value={announcementForm.content}
+                      onChange={(e) =>
+                        setAnnouncementForm({
+                          ...announcementForm,
+                          content: e.target.value,
+                        })
+                      }
+                      className="bg-background/50 border-border/60 focus:border-gold/50 text-sm h-24 resize-none"
+                      placeholder="Announcement details"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    data-ocid="admin.submit_button"
+                    className="w-full bg-gradient-to-r from-gold to-orange-brand text-navy font-bold h-9 text-sm"
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add Announcement
+                  </Button>
+                </form>
+              </div>
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-4">
                   Announcements ({announcements.length})
-                </h2>
-                <Button
-                  data-ocid="admin.announcement.add_button"
-                  onClick={openAddAnn}
-                  className="bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20 text-sm"
-                >
-                  <Plus className="w-4 h-4 mr-1.5" /> Add
-                </Button>
-              </div>
-              {announcements.length === 0 ? (
+                </h3>
                 <div
-                  data-ocid="admin.announcement.empty_state"
-                  className="text-center py-12 text-foreground/40"
+                  className="space-y-3 max-h-80 overflow-y-auto"
+                  data-ocid="admin.list"
                 >
-                  <Megaphone className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                  <p>No announcements yet.</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gold/10 hover:bg-transparent">
-                      <TableHead className="text-foreground/50">
-                        Title
-                      </TableHead>
-                      <TableHead className="text-foreground/50">
-                        Content
-                      </TableHead>
-                      <TableHead className="text-foreground/50">Date</TableHead>
-                      <TableHead className="text-foreground/50 text-right">
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {announcements.map((ann, i) => (
-                      <TableRow
-                        key={String(ann.id)}
-                        data-ocid={`admin.announcement.row.${i + 1}`}
-                        className="border-gold/5"
+                  {announcements.length === 0 ? (
+                    <div
+                      data-ocid="admin.empty_state"
+                      className="text-muted-foreground text-sm"
+                    >
+                      No announcements.
+                    </div>
+                  ) : (
+                    announcements.map((a, i) => (
+                      <div
+                        key={a.id}
+                        data-ocid={`admin.item.${i + 1}`}
+                        className="flex items-start justify-between py-2 border-b border-border/20 gap-2"
                       >
-                        <TableCell className="font-medium text-foreground/80">
-                          {ann.title}
-                        </TableCell>
-                        <TableCell className="text-foreground/40 text-sm max-w-xs truncate">
-                          {ann.content}
-                        </TableCell>
-                        <TableCell className="text-foreground/40 text-sm">
-                          {new Date(
-                            Number(ann.createdAt) / 1000000,
-                          ).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              data-ocid={`admin.announcement.edit_button.${i + 1}`}
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openEditAnn(ann)}
-                              className="text-gold/60 hover:text-gold h-7 w-7 p-0"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                              data-ocid={`admin.announcement.delete_button.${i + 1}`}
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteAnn(ann.id)}
-                              className="text-red-400/60 hover:text-red-400 h-7 w-7 p-0"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                        <div>
+                          <div className="text-sm font-medium text-foreground">
+                            {a.title}
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {a.content}
+                          </div>
+                        </div>
+                        <Button
+                          data-ocid="admin.delete_button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => deleteAnnouncement(a.id)}
+                          className="text-red-400 hover:bg-red-500/10 h-7 w-7 p-0 shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </TabsContent>
 
-          {/* === ADS & PROMOTIONS === */}
+          {/* Ads */}
           <TabsContent value="ads">
-            <div className="glass-card rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between p-4 border-b border-gold/10">
-                <h2 className="font-semibold text-foreground/80">
-                  Ads & Promotions ({ads.length})
-                </h2>
-                <Button
-                  data-ocid="admin.ads.add_button"
-                  onClick={openAddAd}
-                  className="bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20 text-sm"
-                >
-                  <Plus className="w-4 h-4 mr-1.5" /> Add Ad
-                </Button>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-4">
+                  Add Ad / Promo
+                </h3>
+                <form onSubmit={createAd} className="space-y-3">
+                  {formInput(
+                    "Title *",
+                    adForm.title,
+                    (v) => setAdForm({ ...adForm, title: v }),
+                    "Ad title",
+                  )}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-foreground/70">
+                      Upload Image File
+                    </Label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      data-ocid="admin.upload_button"
+                      onChange={(e) => handleAdFileUpload(e, "imageUrl")}
+                      className="w-full text-xs text-muted-foreground bg-background/50 border border-border/60 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
+                    />
+                    {adForm.imageUrl?.startsWith("data:") && (
+                      <img
+                        src={adForm.imageUrl}
+                        alt="preview"
+                        className="h-16 rounded object-cover mt-1"
+                      />
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Or paste image URL:
+                    </p>
+                    <Input
+                      type="text"
+                      value={
+                        adForm.imageUrl.startsWith("data:")
+                          ? ""
+                          : adForm.imageUrl
+                      }
+                      placeholder="https://example.com/banner.jpg"
+                      onChange={(e) =>
+                        setAdForm({ ...adForm, imageUrl: e.target.value })
+                      }
+                      className="bg-background/50 border-border/60 focus:border-gold/50 h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-foreground/70">
+                      Upload Video File (optional)
+                    </Label>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      data-ocid="admin.upload_button"
+                      onChange={(e) => handleAdFileUpload(e, "videoUrl")}
+                      className="w-full text-xs text-muted-foreground bg-background/50 border border-border/60 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Or paste video URL:
+                    </p>
+                    <Input
+                      type="text"
+                      value={
+                        adForm.videoUrl?.startsWith("data:")
+                          ? ""
+                          : adForm.videoUrl || ""
+                      }
+                      placeholder="https://youtube.com/..."
+                      onChange={(e) =>
+                        setAdForm({ ...adForm, videoUrl: e.target.value })
+                      }
+                      className="bg-background/50 border-border/60 focus:border-gold/50 h-9 text-sm"
+                    />
+                  </div>
+                  {formInput(
+                    "Link URL",
+                    adForm.linkUrl,
+                    (v) => setAdForm({ ...adForm, linkUrl: v }),
+                    "https://...",
+                  )}
+                  {formInput(
+                    "Description",
+                    adForm.description,
+                    (v) => setAdForm({ ...adForm, description: v }),
+                    "Short description",
+                  )}
+                  <Button
+                    type="submit"
+                    data-ocid="admin.submit_button"
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-gold to-orange-brand text-navy font-bold h-9 text-sm"
+                  >
+                    {loading ? (
+                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    ) : (
+                      <Plus className="w-3 h-3 mr-1" />
+                    )}{" "}
+                    Add Ad
+                  </Button>
+                </form>
               </div>
-              {ads.length === 0 ? (
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-4">
+                  Active Ads ({ads.length})
+                </h3>
                 <div
-                  data-ocid="admin.ads.empty_state"
-                  className="text-center py-12 text-foreground/40"
+                  className="space-y-3 max-h-80 overflow-y-auto"
+                  data-ocid="admin.list"
                 >
-                  <BarChart2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                  <p>No ads yet. Add your first promotion!</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gold/10 hover:bg-transparent">
-                      <TableHead className="text-foreground/50">
-                        Title
-                      </TableHead>
-                      <TableHead className="text-foreground/50">
-                        Status
-                      </TableHead>
-                      <TableHead className="text-foreground/50">Date</TableHead>
-                      <TableHead className="text-foreground/50 text-right">
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {ads.map((ad, i) => (
-                      <TableRow
-                        key={String(ad.id)}
-                        data-ocid={`admin.ads.row.${i + 1}`}
-                        className="border-gold/5"
+                  {ads.length === 0 ? (
+                    <div
+                      data-ocid="admin.empty_state"
+                      className="text-muted-foreground text-sm"
+                    >
+                      No ads yet.
+                    </div>
+                  ) : (
+                    ads.map((a, i) => (
+                      <div
+                        key={a.id}
+                        data-ocid={`admin.item.${i + 1}`}
+                        className="flex items-center justify-between py-2 border-b border-border/20"
                       >
-                        <TableCell className="font-medium text-foreground/80">
-                          {ad.title}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            className={
-                              ad.isActive
-                                ? "bg-green-500/20 text-green-400 border-green-500/30 text-xs"
-                                : "bg-foreground/10 text-foreground/40 text-xs"
-                            }
-                          >
-                            {ad.isActive ? "Active" : "Inactive"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-foreground/40 text-sm">
-                          {new Date(
-                            Number(ad.createdAt) / 1000000,
-                          ).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              data-ocid={`admin.ads.edit_button.${i + 1}`}
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openEditAd(ad)}
-                              className="text-gold/60 hover:text-gold h-7 w-7 p-0"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                              data-ocid={`admin.ads.delete_button.${i + 1}`}
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteAd(ad.id)}
-                              className="text-red-400/60 hover:text-red-400 h-7 w-7 p-0"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                        <div className="flex-1 mr-2">
+                          <div className="text-sm text-foreground font-medium truncate">
+                            {a.title}
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+                          {a.imageUrl && (
+                            <img
+                              src={a.imageUrl}
+                              alt={a.title}
+                              className="h-8 rounded mt-1 object-cover"
+                            />
+                          )}
+                        </div>
+                        <Button
+                          data-ocid="admin.delete_button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => deleteAd(a.id)}
+                          className="text-red-400 hover:bg-red-500/10 h-7 w-7 p-0 shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </TabsContent>
 
-          {/* === DEPOSITS === */}
-          <TabsContent value="deposits">
-            <div className="glass-card rounded-xl overflow-hidden">
-              <div className="p-4 border-b border-gold/10">
-                <h2 className="font-semibold text-foreground/80">
-                  Pending Deposits ({pendingDeposits.length})
-                </h2>
+          {/* Signals */}
+          <TabsContent value="signals">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-4">
+                  Add Trading Signal
+                </h3>
+                <form onSubmit={addSignal} className="space-y-3">
+                  {formInput(
+                    "Asset *",
+                    signalForm.asset,
+                    (v) => setSignalForm({ ...signalForm, asset: v }),
+                    "BTC/USDT",
+                  )}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-foreground/70">
+                      Signal Type
+                    </Label>
+                    <select
+                      value={signalForm.type}
+                      onChange={(e) =>
+                        setSignalForm({
+                          ...signalForm,
+                          type: e.target.value as any,
+                        })
+                      }
+                      className="w-full bg-background/50 border border-border/60 rounded-lg px-3 py-2 text-sm text-foreground"
+                      data-ocid="admin.select"
+                    >
+                      <option value="BUY">BUY</option>
+                      <option value="SELL">SELL</option>
+                      <option value="HOLD">HOLD</option>
+                    </select>
+                  </div>
+                  {formInput(
+                    "Entry Price *",
+                    signalForm.entryPrice,
+                    (v) => setSignalForm({ ...signalForm, entryPrice: v }),
+                    "e.g. 67800",
+                  )}
+                  {formInput(
+                    "Target Price",
+                    signalForm.targetPrice,
+                    (v) => setSignalForm({ ...signalForm, targetPrice: v }),
+                    "e.g. 72000",
+                  )}
+                  {formInput(
+                    "Stop Loss",
+                    signalForm.stopLoss,
+                    (v) => setSignalForm({ ...signalForm, stopLoss: v }),
+                    "e.g. 65000",
+                  )}
+                  {formInput(
+                    "Description",
+                    signalForm.description,
+                    (v) => setSignalForm({ ...signalForm, description: v }),
+                    "Signal analysis",
+                  )}
+                  <Button
+                    type="submit"
+                    data-ocid="admin.submit_button"
+                    className="w-full bg-gradient-to-r from-gold to-orange-brand text-navy font-bold h-9 text-sm"
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add Signal
+                  </Button>
+                </form>
               </div>
-              {pendingDeposits.length === 0 ? (
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-4">
+                  Signals ({signals.length})
+                </h3>
                 <div
-                  data-ocid="admin.deposits.empty_state"
-                  className="text-center py-12 text-foreground/40"
+                  className="space-y-3 max-h-80 overflow-y-auto"
+                  data-ocid="admin.list"
                 >
-                  <Wallet className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                  <p>No pending deposits</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gold/10 hover:bg-transparent">
-                      <TableHead className="text-foreground/50">User</TableHead>
-                      <TableHead className="text-foreground/50">
-                        Currency
-                      </TableHead>
-                      <TableHead className="text-foreground/50">
-                        Amount
-                      </TableHead>
-                      <TableHead className="text-foreground/50">
-                        TX Hash
-                      </TableHead>
-                      <TableHead className="text-foreground/50">Date</TableHead>
-                      <TableHead className="text-foreground/50 text-right">
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pendingDeposits.map((d, i) => (
-                      <TableRow
-                        key={String(d.id)}
-                        data-ocid={`admin.deposits.row.${i + 1}`}
-                        className="border-gold/5"
+                  {signals.length === 0 ? (
+                    <div
+                      data-ocid="admin.empty_state"
+                      className="text-muted-foreground text-sm"
+                    >
+                      No signals added.
+                    </div>
+                  ) : (
+                    signals.map((s, i) => (
+                      <div
+                        key={s.id}
+                        data-ocid={`admin.item.${i + 1}`}
+                        className="flex items-center justify-between py-2 border-b border-border/20"
                       >
-                        <TableCell className="font-medium text-foreground/80">
-                          {d.username}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
-                            {d.currency}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-foreground/70">
-                          {d.amount}
-                        </TableCell>
-                        <TableCell className="text-foreground/40 text-xs font-mono max-w-[120px] truncate">
-                          {d.txHash}
-                        </TableCell>
-                        <TableCell className="text-foreground/40 text-sm">
-                          {new Date(
-                            Number(d.createdAt) / 1000000,
-                          ).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <ApproveRejectRow
-                            onApprove={async () => {
-                              try {
-                                await approveDeposit.mutateAsync(d.id);
-                                toast.success("Deposit approved");
-                              } catch {
-                                toast.error("Failed");
-                              }
-                            }}
-                            onReject={async () => {
-                              try {
-                                await rejectDeposit.mutateAsync(d.id);
-                                toast.success("Deposit rejected");
-                              } catch {
-                                toast.error("Failed");
-                              }
-                            }}
-                            isPending={
-                              approveDeposit.isPending ||
-                              rejectDeposit.isPending
-                            }
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
-          </TabsContent>
-
-          {/* === WITHDRAWALS === */}
-          <TabsContent value="withdrawals">
-            <div className="glass-card rounded-xl overflow-hidden">
-              <div className="p-4 border-b border-gold/10">
-                <h2 className="font-semibold text-foreground/80">
-                  Pending Withdrawals ({pendingWithdrawals.length})
-                </h2>
-              </div>
-              {pendingWithdrawals.length === 0 ? (
-                <div
-                  data-ocid="admin.withdrawals.empty_state"
-                  className="text-center py-12 text-foreground/40"
-                >
-                  <Wallet className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                  <p>No pending withdrawals</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gold/10 hover:bg-transparent">
-                      <TableHead className="text-foreground/50">User</TableHead>
-                      <TableHead className="text-foreground/50">
-                        Amount
-                      </TableHead>
-                      <TableHead className="text-foreground/50">
-                        Currency
-                      </TableHead>
-                      <TableHead className="text-foreground/50">
-                        Wallet
-                      </TableHead>
-                      <TableHead className="text-foreground/50">Date</TableHead>
-                      <TableHead className="text-foreground/50 text-right">
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pendingWithdrawals.map((w, i) => (
-                      <TableRow
-                        key={String(w.id)}
-                        data-ocid={`admin.withdrawals.row.${i + 1}`}
-                        className="border-gold/5"
-                      >
-                        <TableCell className="font-medium text-foreground/80">
-                          {w.username}
-                        </TableCell>
-                        <TableCell className="text-gold font-mono">
-                          ${(Number(w.amount) / 1000).toFixed(2)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
-                            {w.currency}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-foreground/40 text-xs font-mono max-w-[120px] truncate">
-                          {w.walletAddress}
-                        </TableCell>
-                        <TableCell className="text-foreground/40 text-sm">
-                          {new Date(
-                            Number(w.createdAt) / 1000000,
-                          ).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <ApproveRejectRow
-                            onApprove={async () => {
-                              try {
-                                await approveWithdrawal.mutateAsync(w.id);
-                                toast.success("Withdrawal approved");
-                              } catch {
-                                toast.error("Failed");
-                              }
-                            }}
-                            onReject={async () => {
-                              try {
-                                await rejectWithdrawal.mutateAsync(w.id);
-                                toast.success("Withdrawal rejected");
-                              } catch {
-                                toast.error("Failed");
-                              }
-                            }}
-                            isPending={
-                              approveWithdrawal.isPending ||
-                              rejectWithdrawal.isPending
-                            }
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
-          </TabsContent>
-
-          {/* === EARN APPROVALS === */}
-          <TabsContent value="earns">
-            <div className="glass-card rounded-xl overflow-hidden">
-              <div className="p-4 border-b border-gold/10">
-                <h2 className="font-semibold text-foreground/80">
-                  Pending Earn Approvals ({pendingEarns.length})
-                </h2>
-              </div>
-              {pendingEarns.length === 0 ? (
-                <div
-                  data-ocid="admin.earns.empty_state"
-                  className="text-center py-12 text-foreground/40"
-                >
-                  <Coins className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                  <p>No pending earn records</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gold/10 hover:bg-transparent">
-                      <TableHead className="text-foreground/50">User</TableHead>
-                      <TableHead className="text-foreground/50">Type</TableHead>
-                      <TableHead className="text-foreground/50">
-                        Content
-                      </TableHead>
-                      <TableHead className="text-foreground/50">
-                        Amount
-                      </TableHead>
-                      <TableHead className="text-foreground/50">Date</TableHead>
-                      <TableHead className="text-foreground/50 text-right">
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pendingEarns.map((e, i) => (
-                      <TableRow
-                        key={String(e.id)}
-                        data-ocid={`admin.earns.row.${i + 1}`}
-                        className="border-gold/5"
-                      >
-                        <TableCell className="font-medium text-foreground/80">
-                          {e.username}
-                        </TableCell>
-                        <TableCell>
+                        <div>
+                          <span className="text-sm font-bold text-foreground">
+                            {s.asset}
+                          </span>
                           <Badge
-                            className={
-                              e.taskType.toString().includes("watchVideo")
-                                ? "bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs"
-                                : "bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs"
-                            }
+                            variant="outline"
+                            className={`ml-2 text-xs ${
+                              s.type === "BUY"
+                                ? "text-green-400 border-green-500/30"
+                                : s.type === "SELL"
+                                  ? "text-red-400 border-red-500/30"
+                                  : "text-yellow-400 border-yellow-500/30"
+                            }`}
                           >
-                            {e.taskType.toString().includes("watchVideo")
-                              ? "Watch"
-                              : "Write"}
+                            {s.type}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-foreground/40 text-xs max-w-[150px] truncate">
-                          {e.contentId}
-                        </TableCell>
-                        <TableCell className="text-gold font-mono text-sm">
-                          {(Number(e.amount) / 1000).toFixed(2)} USDT
-                        </TableCell>
-                        <TableCell className="text-foreground/40 text-sm">
-                          {new Date(
-                            Number(e.createdAt) / 1000000,
-                          ).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <ApproveRejectRow
-                            onApprove={async () => {
-                              try {
-                                await approveEarn.mutateAsync(e.id);
-                                toast.success("Earn approved");
-                              } catch {
-                                toast.error("Failed");
-                              }
-                            }}
-                            onReject={async () => {
-                              try {
-                                await rejectEarn.mutateAsync(e.id);
-                                toast.success("Earn rejected");
-                              } catch {
-                                toast.error("Failed");
-                              }
-                            }}
-                            isPending={
-                              approveEarn.isPending || rejectEarn.isPending
-                            }
+                          <div className="text-xs text-muted-foreground">
+                            {s.date}
+                          </div>
+                        </div>
+                        <Button
+                          data-ocid="admin.delete_button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => deleteSignal(s.id)}
+                          className="text-red-400 hover:bg-red-500/10 h-7 w-7 p-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Tasks */}
+          <TabsContent value="tasks">
+            <div className="glass-card rounded-2xl p-5">
+              <h3 className="font-display font-bold text-foreground mb-4 flex items-center gap-2">
+                <Layers className="w-5 h-5 text-gold" /> Task Management
+              </h3>
+
+              {/* Add task form */}
+              <div className="border border-border/30 rounded-xl p-4 mb-6 bg-background/30">
+                <h4 className="font-semibold text-foreground mb-4 text-sm">
+                  Add New Task
+                </h4>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">
+                        Category
+                      </Label>
+                      <select
+                        value={taskForm.category}
+                        onChange={(e) =>
+                          setTaskForm((p) => ({
+                            ...p,
+                            category: e.target.value,
+                          }))
+                        }
+                        className="mt-1 w-full bg-background/50 border border-border/50 rounded-md px-3 py-2 text-sm text-foreground"
+                        data-ocid="admin.tasks.select"
+                      >
+                        <option value="Daily">Daily</option>
+                        <option value="Social">Social</option>
+                        <option value="Video">Video</option>
+                        <option value="Trading">Trading</option>
+                        <option value="Invest">Invest</option>
+                        <option value="Bonus">Bonus</option>
+                        <option value="Referral">Referral</option>
+                        <option value="Skill">Skill</option>
+                        <option value="General">General</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">
+                        Reward (USDT)
+                      </Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        max="100"
+                        placeholder="0.50"
+                        value={taskForm.reward}
+                        onChange={(e) =>
+                          setTaskForm((p) => ({ ...p, reward: e.target.value }))
+                        }
+                        className="mt-1 bg-background/50 border-border/50"
+                        data-ocid="admin.tasks.input"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Task Title *
+                    </Label>
+                    <Input
+                      placeholder="e.g. Watch our latest crypto ad"
+                      value={taskForm.title}
+                      onChange={(e) =>
+                        setTaskForm((p) => ({ ...p, title: e.target.value }))
+                      }
+                      className="mt-1 bg-background/50 border-border/50"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Description
+                    </Label>
+                    <Textarea
+                      placeholder="Brief description of the task..."
+                      value={taskForm.description}
+                      onChange={(e) =>
+                        setTaskForm((p) => ({
+                          ...p,
+                          description: e.target.value,
+                        }))
+                      }
+                      className="mt-1 bg-background/50 border-border/50 min-h-[60px]"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Steps (comma separated)
+                    </Label>
+                    <Input
+                      placeholder="Watch,Follow,Like,Comment,Buy"
+                      value={taskForm.steps}
+                      onChange={(e) =>
+                        setTaskForm((p) => ({ ...p, steps: e.target.value }))
+                      }
+                      className="mt-1 bg-background/50 border-border/50"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      e.g. Watch,Follow,Like,Comment
+                    </p>
+                  </div>
+
+                  {/* Section: File Upload */}
+                  <div className="border border-dashed border-gold/20 rounded-xl p-4 bg-gold/5">
+                    <p className="text-xs font-semibold text-gold mb-3 uppercase tracking-wide">
+                      Option 1 — Upload File
+                    </p>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">
+                          Upload Image
+                        </Label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          data-ocid="admin.tasks.upload_button"
+                          onChange={(e) => handleTaskFileUpload(e, "imageUrl")}
+                          className="mt-1 w-full text-xs text-muted-foreground bg-background/50 border border-border/50 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
+                        />
+                        {taskForm.imageUrl && (
+                          <img
+                            src={taskForm.imageUrl}
+                            alt="preview"
+                            className="mt-2 h-20 rounded-lg object-cover"
                           />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        )}
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">
+                          Upload Video
+                        </Label>
+                        <input
+                          type="file"
+                          accept="video/*"
+                          data-ocid="admin.tasks.upload_button"
+                          onChange={(e) => handleTaskFileUpload(e, "videoUrl")}
+                          className="mt-1 w-full text-xs text-muted-foreground bg-background/50 border border-border/50 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
+                        />
+                        {taskForm.videoUrl && (
+                          <p className="mt-1 text-xs text-green-400">
+                            ✓ Video uploaded
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">
+                          Upload Audio / Song
+                        </Label>
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          data-ocid="admin.tasks.upload_button"
+                          onChange={(e) => handleTaskFileUpload(e, "audioUrl")}
+                          className="mt-1 w-full text-xs text-muted-foreground bg-background/50 border border-border/50 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
+                        />
+                        {taskForm.audioUrl && (
+                          <p className="mt-1 text-xs text-green-400">
+                            ✓ Audio uploaded
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: URL / Link */}
+                  <div className="border border-dashed border-blue-500/20 rounded-xl p-4 bg-blue-500/5">
+                    <p className="text-xs font-semibold text-blue-400 mb-3 uppercase tracking-wide">
+                      Option 2 — URL / Link
+                    </p>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">
+                        Website URL / Link
+                      </Label>
+                      <Input
+                        placeholder="https://youtube.com/watch?v=..."
+                        value={taskForm.adUrl}
+                        onChange={(e) =>
+                          setTaskForm((p) => ({ ...p, adUrl: e.target.value }))
+                        }
+                        className="mt-1 bg-background/50 border-border/50"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        YouTube, Instagram, Telegram, any website link
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    data-ocid="admin.tasks.primary_button"
+                    onClick={() => {
+                      if (!taskForm.title) {
+                        toast.error("Task title is required");
+                        return;
+                      }
+                      const newTask: AdminTask = {
+                        id: Date.now().toString(),
+                        title: taskForm.title,
+                        description: taskForm.description,
+                        category: taskForm.category,
+                        adUrl: taskForm.adUrl,
+                        imageUrl: taskForm.imageUrl,
+                        videoUrl: taskForm.videoUrl,
+                        audioUrl: taskForm.audioUrl,
+                        steps: taskForm.steps
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                        reward: Number.parseFloat(taskForm.reward) || 0.5,
+                        date: new Date().toISOString(),
+                      };
+                      const updated = [...adminTasks, newTask];
+                      setAdminTasks(updated);
+                      localStorage.setItem(
+                        "sce_admin_tasks",
+                        JSON.stringify(updated),
+                      );
+                      setTaskForm({
+                        title: "",
+                        description: "",
+                        category: "Daily",
+                        adUrl: "",
+                        imageUrl: "",
+                        videoUrl: "",
+                        audioUrl: "",
+                        steps: "",
+                        reward: "0.5",
+                      });
+                      toast.success("Task added successfully!");
+                    }}
+                    className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold w-full"
+                  >
+                    <Plus className="w-4 h-4 mr-2" /> Add Task
+                  </Button>
+                </div>
+              </div>
+
+              {/* Task list */}
+              {adminTasks.length === 0 ? (
+                <div
+                  className="text-center py-10 text-muted-foreground"
+                  data-ocid="admin.tasks.empty_state"
+                >
+                  <p className="text-sm">
+                    No tasks yet. Add your first task above.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {adminTasks.map((task, i) => (
+                    <div
+                      key={task.id}
+                      data-ocid={`admin.tasks.item.${i + 1}`}
+                      className="border border-border/30 rounded-xl p-4 bg-background/20"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge className="bg-gold/10 text-gold border-gold/20 text-xs">
+                              {task.category || "General"}
+                            </Badge>
+                            <Badge className="bg-green-500/10 text-green-400 border-green-500/20 text-xs">
+                              ${task.reward} USDT
+                            </Badge>
+                          </div>
+                          <p className="font-semibold text-foreground text-sm">
+                            {task.title}
+                          </p>
+                          {task.description && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {task.description}
+                            </p>
+                          )}
+                          {task.steps.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {task.steps.map((s) => (
+                                <span
+                                  key={s}
+                                  className="text-xs bg-background/50 border border-border/30 rounded px-2 py-0.5 text-muted-foreground"
+                                >
+                                  {s}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {task.adUrl && (
+                            <a
+                              href={task.adUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-400 hover:underline mt-1 block truncate"
+                            >
+                              {task.adUrl}
+                            </a>
+                          )}
+                          {task.imageUrl && (
+                            <img
+                              src={task.imageUrl}
+                              alt={task.title}
+                              className="mt-2 h-16 rounded-lg object-cover"
+                            />
+                          )}
+                          {task.videoUrl && (
+                            <p className="text-xs text-green-400 mt-1">
+                              ✓ Video attached
+                            </p>
+                          )}
+                          {(task as AdminTask & { audioUrl?: string })
+                            .audioUrl && (
+                            <p className="text-xs text-green-400 mt-1">
+                              ✓ Audio attached
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-ocid={`admin.tasks.delete_button.${i + 1}`}
+                          onClick={() => {
+                            const updated = adminTasks.filter(
+                              (t) => t.id !== task.id,
+                            );
+                            setAdminTasks(updated);
+                            localStorage.setItem(
+                              "sce_admin_tasks",
+                              JSON.stringify(updated),
+                            );
+                            toast.success("Task deleted");
+                          }}
+                          className="text-red-400 hover:text-red-300 hover:bg-red-400/10 shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </TabsContent>
 
-          {/* === SETTINGS === */}
-          <TabsContent value="settings">
-            <div className="glass-card rounded-xl p-6 max-w-lg">
-              <h2 className="font-semibold text-foreground/80 mb-4">
-                Admin Settings
-              </h2>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 p-4 rounded-lg bg-gold/5 border border-gold/10">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gold to-orange-brand flex items-center justify-center text-navy font-bold text-sm">
-                    SK
+          <TabsContent value="futures">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-4 flex items-center gap-2">
+                  Future Trading Content
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Title *
+                    </Label>
+                    <Input
+                      data-ocid="admin.futures.input"
+                      placeholder="e.g. BTC Long Position Signal"
+                      value={futureForm.title}
+                      onChange={(e) =>
+                        setFutureForm((p) => ({ ...p, title: e.target.value }))
+                      }
+                      className="mt-1 bg-background/50 border-border/50"
+                    />
                   </div>
                   <div>
-                    <div className="font-semibold text-foreground">
-                      sandeepkarna321
+                    <Label className="text-xs text-muted-foreground">
+                      Description
+                    </Label>
+                    <Textarea
+                      placeholder="Describe the future trading opportunity..."
+                      value={futureForm.description}
+                      onChange={(e) =>
+                        setFutureForm((p) => ({
+                          ...p,
+                          description: e.target.value,
+                        }))
+                      }
+                      className="mt-1 bg-background/50 border-border/50 min-h-[60px]"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Upload Image
+                    </Label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      data-ocid="admin.futures.upload_button"
+                      onChange={(e) => handleFutureFileUpload(e, "imageUrl")}
+                      className="mt-1 w-full text-xs text-muted-foreground bg-background/50 border border-border/50 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
+                    />
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Or paste URL:
+                    </p>
+                    <Input
+                      type="text"
+                      value={
+                        futureForm.imageUrl.startsWith("data:")
+                          ? ""
+                          : futureForm.imageUrl
+                      }
+                      placeholder="https://..."
+                      onChange={(e) =>
+                        setFutureForm((p) => ({
+                          ...p,
+                          imageUrl: e.target.value,
+                        }))
+                      }
+                      className="mt-1 bg-background/50 border-border/50 text-sm h-8"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Upload Video
+                    </Label>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      data-ocid="admin.futures.upload_button"
+                      onChange={(e) => handleFutureFileUpload(e, "videoUrl")}
+                      className="mt-1 w-full text-xs text-muted-foreground bg-background/50 border border-border/50 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
+                    />
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Or paste URL:
+                    </p>
+                    <Input
+                      type="text"
+                      value={
+                        futureForm.videoUrl?.startsWith("data:")
+                          ? ""
+                          : futureForm.videoUrl || ""
+                      }
+                      placeholder="https://youtube.com/..."
+                      onChange={(e) =>
+                        setFutureForm((p) => ({
+                          ...p,
+                          videoUrl: e.target.value,
+                        }))
+                      }
+                      className="mt-1 bg-background/50 border-border/50 text-sm h-8"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">
+                        Link URL
+                      </Label>
+                      <Input
+                        type="text"
+                        placeholder="https://..."
+                        value={futureForm.linkUrl}
+                        onChange={(e) =>
+                          setFutureForm((p) => ({
+                            ...p,
+                            linkUrl: e.target.value,
+                          }))
+                        }
+                        className="mt-1 bg-background/50 border-border/50 text-sm h-8"
+                      />
                     </div>
-                    <div className="text-xs text-foreground/40">
-                      Administrator
+                    <div>
+                      <Label className="text-xs text-muted-foreground">
+                        Reward Amount (USDT)
+                      </Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        placeholder="0"
+                        value={futureForm.reward}
+                        onChange={(e) =>
+                          setFutureForm((p) => ({
+                            ...p,
+                            reward: e.target.value,
+                          }))
+                        }
+                        className="mt-1 bg-background/50 border-border/50 text-sm h-8"
+                      />
                     </div>
                   </div>
+                  <Button
+                    data-ocid="admin.futures.primary_button"
+                    onClick={() => {
+                      if (!futureForm.title) {
+                        toast.error("Title is required");
+                        return;
+                      }
+                      const newFuture: FutureContent = {
+                        id: Date.now().toString(),
+                        title: futureForm.title,
+                        description: futureForm.description,
+                        imageUrl: futureForm.imageUrl,
+                        videoUrl: futureForm.videoUrl,
+                        linkUrl: futureForm.linkUrl,
+                        reward: Number.parseFloat(futureForm.reward) || 0,
+                        date: new Date().toISOString().slice(0, 10),
+                      };
+                      const updated = [newFuture, ...futures];
+                      setFutures(updated);
+                      saveLS("sce_admin_futures", updated);
+                      setFutureForm({
+                        title: "",
+                        description: "",
+                        imageUrl: "",
+                        videoUrl: "",
+                        linkUrl: "",
+                        reward: "0",
+                      });
+                      toast.success("Future trading content added!");
+                    }}
+                    className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold w-full"
+                  >
+                    <Plus className="w-4 h-4 mr-2" /> Add Future Content
+                  </Button>
                 </div>
-                <div className="text-sm text-foreground/50 space-y-1">
-                  <div>
-                    Website:{" "}
-                    <span className="text-gold/70">Sandeepkarnalive.com</span>
-                  </div>
-                  <div>
-                    Role: <span className="text-gold/70">Admin</span>
-                  </div>
-                  <div>
-                    Features: <span className="text-gold/70">Full Control</span>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={handleLogout}
-                  className="border-red-500/30 text-red-400 hover:bg-red-500/10 w-full"
-                >
-                  <LogOut className="w-4 h-4 mr-2" /> Sign Out
-                </Button>
               </div>
+
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-display font-bold text-foreground mb-4">
+                  Future Content ({futures.length})
+                </h3>
+                <div
+                  className="space-y-3 max-h-96 overflow-y-auto"
+                  data-ocid="admin.list"
+                >
+                  {futures.length === 0 ? (
+                    <div
+                      data-ocid="admin.futures.empty_state"
+                      className="text-muted-foreground text-sm text-center py-8"
+                    >
+                      No future trading content yet.
+                    </div>
+                  ) : (
+                    futures.map((f, i) => (
+                      <div
+                        key={f.id}
+                        data-ocid={`admin.futures.item.${i + 1}`}
+                        className="border border-border/30 rounded-xl p-3 bg-background/20"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-foreground text-sm">
+                                {f.title}
+                              </span>
+                              {f.reward > 0 && (
+                                <Badge className="bg-gold/10 text-gold border-gold/20 text-xs">
+                                  ${f.reward} USDT
+                                </Badge>
+                              )}
+                            </div>
+                            {f.description && (
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                {f.description}
+                              </p>
+                            )}
+                            {f.imageUrl && (
+                              <img
+                                src={f.imageUrl}
+                                alt={f.title}
+                                className="h-12 rounded mt-1 object-cover"
+                              />
+                            )}
+                          </div>
+                          <Button
+                            data-ocid={`admin.futures.delete_button.${i + 1}`}
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const updated = futures.filter(
+                                (x) => x.id !== f.id,
+                              );
+                              setFutures(updated);
+                              saveLS("sce_admin_futures", updated);
+                              toast.success("Deleted.");
+                            }}
+                            className="text-red-400 hover:text-red-300 hover:bg-red-400/10 shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Deposits */}
+          <TabsContent value="deposits">
+            <div className="glass-card rounded-2xl p-5" data-ocid="admin.table">
+              <h3 className="font-display font-bold text-foreground mb-4">
+                Pending Deposits ({deposits.length})
+              </h3>
+              {deposits.length === 0 ? (
+                <div
+                  data-ocid="admin.empty_state"
+                  className="text-center py-8 text-muted-foreground"
+                >
+                  No pending deposits.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {deposits.map((d: any, i: number) => (
+                    <div
+                      key={d.txHash + String(i)}
+                      data-ocid={`admin.item.${i + 1}`}
+                      className="glass-card rounded-xl p-4"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-bold text-foreground">
+                            {d.username}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {d.currency} • ${d.amount}
+                          </div>
+                          <div className="text-xs text-muted-foreground font-mono mt-1 truncate max-w-xs">
+                            {d.txHash}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            data-ocid="admin.confirm_button"
+                            size="sm"
+                            className="bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 h-8 text-xs"
+                            onClick={() => {
+                              const us = getSCEUsers();
+                              for (const u of us) {
+                                const key = `sce_tx_${u.username}`;
+                                const txs = JSON.parse(
+                                  localStorage.getItem(key) || "[]",
+                                );
+                                const idx = txs.findIndex(
+                                  (t: any) =>
+                                    t.type === "deposit" &&
+                                    t.txHash === d.txHash &&
+                                    t.status === "pending",
+                                );
+                                if (idx !== -1) {
+                                  txs[idx].status = "approved";
+                                  const ui = us.findIndex(
+                                    (u2: any) => u2.username === u.username,
+                                  );
+                                  if (ui !== -1) {
+                                    us[ui].balance =
+                                      (us[ui].balance || 0) +
+                                      Number.parseFloat(txs[idx].amount);
+                                    us[ui].totalDeposited =
+                                      (us[ui].totalDeposited || 0) +
+                                      Number.parseFloat(txs[idx].amount);
+                                    localStorage.setItem(
+                                      "sce_users",
+                                      JSON.stringify(us),
+                                    );
+                                  }
+                                  localStorage.setItem(
+                                    key,
+                                    JSON.stringify(txs),
+                                  );
+                                  toast.success(
+                                    `Deposit approved for ${u.username}`,
+                                  );
+                                  window.location.reload();
+                                  break;
+                                }
+                              }
+                            }}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            data-ocid="admin.delete_button"
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-400 border border-red-500/30 hover:bg-red-500/10 h-8 text-xs"
+                            onClick={() => {
+                              const us = getSCEUsers();
+                              for (const u of us) {
+                                const key = `sce_tx_${u.username}`;
+                                const txs = JSON.parse(
+                                  localStorage.getItem(key) || "[]",
+                                );
+                                const idx = txs.findIndex(
+                                  (t: any) =>
+                                    t.type === "deposit" &&
+                                    t.txHash === d.txHash &&
+                                    t.status === "pending",
+                                );
+                                if (idx !== -1) {
+                                  txs[idx].status = "rejected";
+                                  localStorage.setItem(
+                                    key,
+                                    JSON.stringify(txs),
+                                  );
+                                  toast.error(
+                                    `Deposit rejected for ${u.username}`,
+                                  );
+                                  window.location.reload();
+                                  break;
+                                }
+                              }
+                            }}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Withdrawals */}
+          <TabsContent value="withdrawals">
+            <div className="glass-card rounded-2xl p-5" data-ocid="admin.table">
+              <h3 className="font-display font-bold text-foreground mb-4">
+                Pending Withdrawals ({withdrawals.length})
+              </h3>
+              {withdrawals.length === 0 ? (
+                <div
+                  data-ocid="admin.empty_state"
+                  className="text-center py-8 text-muted-foreground"
+                >
+                  No pending withdrawals.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {withdrawals.map((w: any, i: number) => (
+                    <div
+                      key={w.walletAddress + String(i)}
+                      data-ocid={`admin.item.${i + 1}`}
+                      className="glass-card rounded-xl p-4"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-bold text-foreground">
+                            {w.username}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {w.currency} • ${w.amount}
+                          </div>
+                          <div className="text-xs text-muted-foreground font-mono mt-1 truncate max-w-xs">
+                            {w.walletAddress}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            data-ocid="admin.confirm_button"
+                            size="sm"
+                            className="bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 h-8 text-xs"
+                            onClick={() => {
+                              const us = getSCEUsers();
+                              for (const u of us) {
+                                const key = `sce_tx_${u.username}`;
+                                const txs = JSON.parse(
+                                  localStorage.getItem(key) || "[]",
+                                );
+                                const idx = txs.findIndex(
+                                  (t: any) =>
+                                    t.type === "withdrawal" &&
+                                    t.walletAddress === w.walletAddress &&
+                                    t.status === "pending",
+                                );
+                                if (idx !== -1) {
+                                  txs[idx].status = "approved";
+                                  const ui = us.findIndex(
+                                    (u2: any) => u2.username === u.username,
+                                  );
+                                  if (ui !== -1) {
+                                    us[ui].balance = Math.max(
+                                      0,
+                                      (us[ui].balance || 0) -
+                                        Number.parseFloat(txs[idx].amount),
+                                    );
+                                    localStorage.setItem(
+                                      "sce_users",
+                                      JSON.stringify(us),
+                                    );
+                                  }
+                                  localStorage.setItem(
+                                    key,
+                                    JSON.stringify(txs),
+                                  );
+                                  toast.success(
+                                    `Withdrawal approved for ${u.username}`,
+                                  );
+                                  window.location.reload();
+                                  break;
+                                }
+                              }
+                            }}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            data-ocid="admin.delete_button"
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-400 border border-red-500/30 hover:bg-red-500/10 h-8 text-xs"
+                            onClick={() => {
+                              const us = getSCEUsers();
+                              for (const u of us) {
+                                const key = `sce_tx_${u.username}`;
+                                const txs = JSON.parse(
+                                  localStorage.getItem(key) || "[]",
+                                );
+                                const idx = txs.findIndex(
+                                  (t: any) =>
+                                    t.type === "withdrawal" &&
+                                    t.walletAddress === w.walletAddress &&
+                                    t.status === "pending",
+                                );
+                                if (idx !== -1) {
+                                  txs[idx].status = "rejected";
+                                  localStorage.setItem(
+                                    key,
+                                    JSON.stringify(txs),
+                                  );
+                                  toast.error(
+                                    `Withdrawal rejected for ${u.username}`,
+                                  );
+                                  window.location.reload();
+                                  break;
+                                }
+                              }
+                            }}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Users */}
+          <TabsContent value="users">
+            <div
+              className="glass-card rounded-2xl overflow-hidden"
+              data-ocid="admin.table"
+            >
+              <div className="p-5 border-b border-border/30">
+                <h3 className="font-display font-bold text-foreground">
+                  All Users ({users.length})
+                </h3>
+              </div>
+              {users.length === 0 ? (
+                <div
+                  data-ocid="admin.empty_state"
+                  className="text-center py-12 text-muted-foreground"
+                >
+                  No users registered yet.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border/30">
+                        {["Username", "Email", "Balance", "Plan", "Joined"].map(
+                          (h) => (
+                            <th
+                              key={h}
+                              className="text-left text-xs font-medium text-muted-foreground px-4 py-3 uppercase tracking-wider"
+                            >
+                              {h}
+                            </th>
+                          ),
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((u: any, i: number) => (
+                        <motion.tr
+                          key={u.username + String(i)}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: i * 0.05 }}
+                          data-ocid="admin.row"
+                          className="border-b border-border/20 hover:bg-gold/5 transition-colors"
+                        >
+                          <td className="px-4 py-3 font-medium text-foreground">
+                            {u.username}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-muted-foreground">
+                            {u.email}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-green-400">
+                            ${(u.balance || 0).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge
+                              variant="outline"
+                              className="text-xs border-gold/30 text-gold"
+                            >
+                              {u.activePlan || "None"}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                            {new Date(u.joinDate).toLocaleDateString()}
+                          </td>
+                        </motion.tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </TabsContent>
         </Tabs>
       </div>
-
-      {/* Vlog Modal */}
-      <Dialog open={vlogOpen} onOpenChange={setVlogOpen}>
-        <DialogContent
-          data-ocid="admin.vlog.dialog"
-          className="bg-navy-card border-gold/20 text-foreground max-w-lg"
-        >
-          <DialogHeader>
-            <DialogTitle className="font-display gold-gradient">
-              {editVlogId ? "Edit Post" : "Add New Post"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-foreground/60 text-xs">Title</Label>
-              <Input
-                data-ocid="admin.vlog.input"
-                value={vlogForm.title}
-                onChange={(e) =>
-                  setVlogForm({ ...vlogForm, title: e.target.value })
-                }
-                className="bg-navy border-gold/20 text-foreground"
-                placeholder="Video title"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-foreground/60 text-xs">Description</Label>
-              <Textarea
-                data-ocid="admin.vlog.textarea"
-                value={vlogForm.description}
-                onChange={(e) =>
-                  setVlogForm({ ...vlogForm, description: e.target.value })
-                }
-                className="bg-navy border-gold/20 text-foreground resize-none"
-                rows={3}
-                placeholder="Short description..."
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-foreground/60 text-xs">Video URL</Label>
-                <Input
-                  data-ocid="admin.vlog.input"
-                  value={vlogForm.videoUrl}
-                  onChange={(e) =>
-                    setVlogForm({ ...vlogForm, videoUrl: e.target.value })
-                  }
-                  className="bg-navy border-gold/20 text-foreground"
-                  placeholder="YouTube URL"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-foreground/60 text-xs">
-                  Thumbnail URL
-                </Label>
-                <Input
-                  data-ocid="admin.vlog.input"
-                  value={vlogForm.thumbnailUrl}
-                  onChange={(e) =>
-                    setVlogForm({ ...vlogForm, thumbnailUrl: e.target.value })
-                  }
-                  className="bg-navy border-gold/20 text-foreground"
-                  placeholder="Image URL"
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-foreground/60 text-xs">Category</Label>
-              <Select
-                value={String(vlogForm.category)}
-                onValueChange={(v) =>
-                  setVlogForm({ ...vlogForm, category: v as VlogCategory })
-                }
-              >
-                <SelectTrigger
-                  data-ocid="admin.vlog.select"
-                  className="bg-navy border-gold/20 text-foreground"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-navy-card border-gold/20">
-                  <SelectItem value={VlogCategory.vlog}>Vlog</SelectItem>
-                  <SelectItem value={VlogCategory.trading}>Trading</SelectItem>
-                  <SelectItem value={VlogCategory.promo}>Promo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              data-ocid="admin.vlog.cancel_button"
-              onClick={() => setVlogOpen(false)}
-              className="text-foreground/50"
-            >
-              <X className="w-4 h-4 mr-1" /> Cancel
-            </Button>
-            <Button
-              data-ocid="admin.vlog.save_button"
-              onClick={handleVlogSubmit}
-              disabled={createVlog.isPending || updateVlog.isPending}
-              className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold"
-            >
-              {(createVlog.isPending || updateVlog.isPending) && (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              )}
-              {editVlogId ? "Update" : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Announcement Modal */}
-      <Dialog open={annOpen} onOpenChange={setAnnOpen}>
-        <DialogContent
-          data-ocid="admin.announcement.dialog"
-          className="bg-navy-card border-gold/20 text-foreground max-w-lg"
-        >
-          <DialogHeader>
-            <DialogTitle className="font-display gold-gradient">
-              {editAnnId ? "Edit Announcement" : "Add Announcement"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-foreground/60 text-xs">Title</Label>
-              <Input
-                data-ocid="admin.announcement.input"
-                value={annForm.title}
-                onChange={(e) =>
-                  setAnnForm({ ...annForm, title: e.target.value })
-                }
-                className="bg-navy border-gold/20 text-foreground"
-                placeholder="Announcement title"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-foreground/60 text-xs">Content</Label>
-              <Textarea
-                data-ocid="admin.announcement.textarea"
-                value={annForm.content}
-                onChange={(e) =>
-                  setAnnForm({ ...annForm, content: e.target.value })
-                }
-                className="bg-navy border-gold/20 text-foreground resize-none"
-                rows={4}
-                placeholder="Content..."
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              data-ocid="admin.announcement.cancel_button"
-              onClick={() => setAnnOpen(false)}
-              className="text-foreground/50"
-            >
-              <X className="w-4 h-4 mr-1" /> Cancel
-            </Button>
-            <Button
-              data-ocid="admin.announcement.save_button"
-              onClick={handleAnnSubmit}
-              disabled={createAnn.isPending || updateAnn.isPending}
-              className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold"
-            >
-              {(createAnn.isPending || updateAnn.isPending) && (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              )}
-              {editAnnId ? "Update" : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Ad Modal */}
-      <Dialog open={adOpen} onOpenChange={setAdOpen}>
-        <DialogContent
-          data-ocid="admin.ads.dialog"
-          className="bg-navy-card border-gold/20 text-foreground max-w-lg"
-        >
-          <DialogHeader>
-            <DialogTitle className="font-display gold-gradient">
-              {editAdId ? "Edit Ad" : "Add Ad/Promotion"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-foreground/60 text-xs">Title</Label>
-              <Input
-                data-ocid="admin.ads.input"
-                value={adForm.title}
-                onChange={(e) =>
-                  setAdForm({ ...adForm, title: e.target.value })
-                }
-                className="bg-navy border-gold/20 text-foreground"
-                placeholder="Ad title"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-foreground/60 text-xs">Description</Label>
-              <Textarea
-                data-ocid="admin.ads.textarea"
-                value={adForm.description}
-                onChange={(e) =>
-                  setAdForm({ ...adForm, description: e.target.value })
-                }
-                className="bg-navy border-gold/20 text-foreground resize-none"
-                rows={2}
-                placeholder="Short description"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-foreground/60 text-xs">Image URL</Label>
-                <Input
-                  data-ocid="admin.ads.input"
-                  value={adForm.imageUrl}
-                  onChange={(e) =>
-                    setAdForm({ ...adForm, imageUrl: e.target.value })
-                  }
-                  className="bg-navy border-gold/20 text-foreground"
-                  placeholder="https://..."
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-foreground/60 text-xs">Link URL</Label>
-                <Input
-                  data-ocid="admin.ads.input"
-                  value={adForm.linkUrl}
-                  onChange={(e) =>
-                    setAdForm({ ...adForm, linkUrl: e.target.value })
-                  }
-                  className="bg-navy border-gold/20 text-foreground"
-                  placeholder="https://..."
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch
-                data-ocid="admin.ads.switch"
-                checked={adForm.isActive}
-                onCheckedChange={(v) => setAdForm({ ...adForm, isActive: v })}
-              />
-              <Label className="text-foreground/60 text-sm">
-                Active (show on site)
-              </Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              data-ocid="admin.ads.cancel_button"
-              onClick={() => setAdOpen(false)}
-              className="text-foreground/50"
-            >
-              <X className="w-4 h-4 mr-1" /> Cancel
-            </Button>
-            <Button
-              data-ocid="admin.ads.save_button"
-              onClick={handleAdSubmit}
-              disabled={createAd.isPending || updateAd.isPending}
-              className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold"
-            >
-              {(createAd.isPending || updateAd.isPending) && (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              )}
-              {editAdId ? "Update" : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

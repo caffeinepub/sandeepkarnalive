@@ -5,95 +5,197 @@ import {
   useEffect,
   useState,
 } from "react";
-import { useActor } from "../hooks/useActor";
 
-export interface AuthUser {
+export interface LocalUser {
   username: string;
-  balance: bigint;
-  totalEarned: bigint;
-  totalDeposited: bigint;
+  email: string;
+  fullName: string;
+  passwordHash: string;
+  balance: number;
+  totalEarned: number;
+  totalDeposited: number;
+  referralCode: string;
+  joinDate: string;
+  activePlan: string | null;
+  planActivatedAt: string | null;
+  referredBy: string | null;
 }
+
+export interface AuthUser extends LocalUser {}
 
 interface AuthContextValue {
   user: AuthUser | null;
   isLoggedIn: boolean;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (usernameOrEmail: string, password: string) => Promise<void>;
   logout: () => void;
-  register: (username: string, password: string) => Promise<void>;
-  refreshUser: () => Promise<void>;
+  register: (
+    fullName: string,
+    username: string,
+    email: string,
+    password: string,
+    referralCode?: string,
+  ) => Promise<void>;
+  refreshUser: () => void;
+  updateUser: (updates: Partial<LocalUser>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function hashPassword(password: string): Promise<Uint8Array> {
+async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return new Uint8Array(hashBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function generateReferralCode(): string {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+function getUsers(): LocalUser[] {
+  try {
+    return JSON.parse(localStorage.getItem("sce_users") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveUsers(users: LocalUser[]) {
+  localStorage.setItem("sce_users", JSON.stringify(users));
+}
+
+function getCurrentUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem("sce_current_user");
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { actor, isFetching } = useActor();
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const storedUsername = localStorage.getItem("skl_username");
-
-  const refreshUser = useCallback(async () => {
-    if (!actor || isFetching) return;
-    try {
-      const account = await actor.getUserAccount();
-      if (account) {
-        setUser({
-          username: account.username,
-          balance: account.balance,
-          totalEarned: account.totalEarned,
-          totalDeposited: account.totalDeposited,
-        });
+  const refreshUser = useCallback(() => {
+    const current = getCurrentUser();
+    if (current) {
+      // Re-read from users array to get latest data
+      const users = getUsers();
+      const latest = users.find(
+        (u) => u.username.toLowerCase() === current.username.toLowerCase(),
+      );
+      if (latest) {
+        localStorage.setItem("sce_current_user", JSON.stringify(latest));
+        setUser(latest);
+      } else {
+        setUser(current);
       }
-    } catch {
-      // ignore
+    } else {
+      setUser(null);
     }
-  }, [actor, isFetching]);
+  }, []);
 
   useEffect(() => {
-    if (storedUsername && actor && !isFetching) {
-      refreshUser();
-    }
-  }, [actor, isFetching, storedUsername, refreshUser]);
+    refreshUser();
+    setIsLoading(false);
+  }, [refreshUser]);
 
-  async function login(username: string, password: string) {
-    if (!actor) throw new Error("Not connected");
+  const updateUser = useCallback(
+    (updates: Partial<LocalUser>) => {
+      if (!user) return;
+      const users = getUsers();
+      const idx = users.findIndex(
+        (u) => u.username.toLowerCase() === user.username.toLowerCase(),
+      );
+      if (idx !== -1) {
+        users[idx] = { ...users[idx], ...updates };
+        saveUsers(users);
+        const updated = users[idx];
+        localStorage.setItem("sce_current_user", JSON.stringify(updated));
+        setUser(updated);
+      }
+    },
+    [user],
+  );
+
+  async function login(usernameOrEmail: string, password: string) {
     setIsLoading(true);
     try {
       const hash = await hashPassword(password);
-      const account = await actor.getUserAccount();
-      if (!account) {
-        await actor.registerUser(username, hash);
-      }
-      localStorage.setItem("skl_username", username);
-      await refreshUser();
+      const users = getUsers();
+      const found = users.find(
+        (u) =>
+          u.username.toLowerCase() === usernameOrEmail.toLowerCase() ||
+          u.email.toLowerCase() === usernameOrEmail.toLowerCase(),
+      );
+      if (!found) throw new Error("User not found. Please register first.");
+      if (found.passwordHash !== hash) throw new Error("Incorrect password.");
+      localStorage.setItem("sce_current_user", JSON.stringify(found));
+      setUser(found);
     } finally {
       setIsLoading(false);
     }
   }
 
-  async function register(username: string, password: string) {
-    if (!actor) throw new Error("Not connected");
+  async function register(
+    fullName: string,
+    username: string,
+    email: string,
+    password: string,
+    referralCode?: string,
+  ) {
     setIsLoading(true);
     try {
+      const users = getUsers();
+      if (
+        users.find((u) => u.username.toLowerCase() === username.toLowerCase())
+      ) {
+        throw new Error("Username already taken.");
+      }
+      if (users.find((u) => u.email.toLowerCase() === email.toLowerCase())) {
+        throw new Error("Email already registered.");
+      }
       const hash = await hashPassword(password);
-      await actor.registerUser(username, hash);
-      localStorage.setItem("skl_username", username);
-      await refreshUser();
+      const newUser: LocalUser = {
+        username,
+        email,
+        fullName,
+        passwordHash: hash,
+        balance: 0,
+        totalEarned: 0,
+        totalDeposited: 0,
+        referralCode: generateReferralCode(),
+        joinDate: new Date().toISOString(),
+        activePlan: null,
+        planActivatedAt: null,
+        referredBy: referralCode || null,
+      };
+      // Give referral bonus to referrer
+      if (referralCode) {
+        const referrerIdx = users.findIndex(
+          (u) => u.referralCode === referralCode.toUpperCase(),
+        );
+        if (referrerIdx !== -1) {
+          users[referrerIdx].balance = (users[referrerIdx].balance || 0) + 5;
+          users[referrerIdx].totalEarned =
+            (users[referrerIdx].totalEarned || 0) + 5;
+        }
+      }
+      users.push(newUser);
+      saveUsers(users);
+      localStorage.setItem("sce_current_user", JSON.stringify(newUser));
+      setUser(newUser);
     } finally {
       setIsLoading(false);
     }
   }
 
   function logout() {
-    localStorage.removeItem("skl_username");
+    localStorage.removeItem("sce_current_user");
     setUser(null);
   }
 
@@ -107,6 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         register,
         refreshUser,
+        updateUser,
       }}
     >
       {children}

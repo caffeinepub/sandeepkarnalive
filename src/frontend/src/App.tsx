@@ -16,9 +16,13 @@ import { AdminDashboard } from "./pages/AdminDashboard";
 import { Crypto } from "./pages/Crypto";
 import { Earn } from "./pages/Earn";
 import { Home } from "./pages/Home";
+import { Leaderboard } from "./pages/Leaderboard";
 import { Login } from "./pages/Login";
 import { News } from "./pages/News";
+import { Plans } from "./pages/Plans";
 import { Profile } from "./pages/Profile";
+import { Referral } from "./pages/Referral";
+import { Signals } from "./pages/Signals";
 import { Signup } from "./pages/Signup";
 import { Trading } from "./pages/Trading";
 import { Vlog } from "./pages/Vlog";
@@ -40,82 +44,91 @@ const rootRoute = createRootRoute({
   ),
 });
 
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/",
-  component: Home,
-});
-const cryptoRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/crypto",
-  component: Crypto,
-});
-const newsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/news",
-  component: News,
-});
-const tradingRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/trading",
-  component: Trading,
-});
-const vlogRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/vlog",
-  component: Vlog,
-});
-const earnRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/earn",
-  component: Earn,
-});
-const walletRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/wallet",
-  component: Wallet,
-});
-const loginRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/login",
-  component: Login,
-});
-const signupRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/signup",
-  component: Signup,
-});
-const adminRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin",
-  component: Admin,
-});
-const adminDashRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin/dashboard",
-  component: AdminDashboard,
-});
-const profileRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/profile",
-  component: Profile,
-});
+const routes = [
+  createRoute({ getParentRoute: () => rootRoute, path: "/", component: Home }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/plans",
+    component: Plans,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/signals",
+    component: Signals,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/leaderboard",
+    component: Leaderboard,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/referral",
+    component: Referral,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/earn",
+    component: Earn,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/wallet",
+    component: Wallet,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/crypto",
+    component: Crypto,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/news",
+    component: News,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/trading",
+    component: Trading,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/vlog",
+    component: Vlog,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/login",
+    component: Login,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/signup",
+    component: Signup,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/register",
+    component: Signup,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/profile",
+    component: Profile,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/admin",
+    component: Admin,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/admin/dashboard",
+    component: AdminDashboard,
+  }),
+];
 
-const routeTree = rootRoute.addChildren([
-  indexRoute,
-  cryptoRoute,
-  newsRoute,
-  tradingRoute,
-  vlogRoute,
-  earnRoute,
-  walletRoute,
-  loginRoute,
-  signupRoute,
-  adminRoute,
-  adminDashRoute,
-  profileRoute,
-]);
-
+const routeTree = rootRoute.addChildren(routes);
 const router = createRouter({ routeTree });
 
 declare module "@tanstack/react-router" {

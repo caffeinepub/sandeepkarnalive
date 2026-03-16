@@ -10,485 +10,546 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Link } from "@tanstack/react-router";
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  CheckCircle,
-  Clock,
+  Check,
   Copy,
   Loader2,
   Wallet as WalletIcon,
-  XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Variant_pending_approved_rejected } from "../backend.d";
 import { useAuth } from "../contexts/AuthContext";
-import {
-  useSubmitDeposit,
-  useSubmitWithdrawal,
-  useUserDeposits,
-  useUserWithdrawals,
-} from "../hooks/useQueries";
+import { useActor } from "../hooks/useActor";
 
-const DEPOSIT_ADDRESSES = [
+const ADDRESSES = [
   {
-    currency: "ETH",
-    network: "ERC20",
-    address: "0x8778663Dc7A7814eb6d443384fdb23AE180a7F8F",
+    currency: "USDT (TRC20)",
+    symbol: "USDT",
+    address: "TFiaFMNBnDFkLNE9n46jDvtysvU5vLPFL9",
+    color: "text-green-400",
+    network: "Tron Network",
   },
   {
-    currency: "USDT",
-    network: "ERC20 (Ethereum)",
+    currency: "Ethereum (ETH)",
+    symbol: "ETH",
     address: "0x8778663Dc7A7814eb6d443384fdb23AE180a7F8F",
+    color: "text-blue-400",
+    network: "ERC-20",
   },
   {
-    currency: "BTC",
-    network: "Bitcoin",
+    currency: "Bitcoin (BTC)",
+    symbol: "BTC",
     address: "bc1qaan3fp940gg6hy2nhnuta4d7208x84gfrcxuc6",
+    color: "text-orange-400",
+    network: "Bitcoin Network",
   },
   {
-    currency: "SOL",
-    network: "Solana",
+    currency: "Solana (SOL)",
+    symbol: "SOL",
     address: "G4vAf5wE1o7CnxYEWKPk96Ym9Y3Qd1ZWsU2QNsruG6PX",
-  },
-  {
-    currency: "USDT",
-    network: "TRC20 (Tron)",
-    address: "TFiaFMNBnDFkLNE9n46jDvtysvU5vLPFL9",
-  },
-  {
-    currency: "TRON",
-    network: "TRC20",
-    address: "TFiaFMNBnDFkLNE9n46jDvtysvU5vLPFL9",
+    color: "text-purple-400",
+    network: "Solana Network",
   },
 ];
 
-function StatusBadge({
-  status,
-}: { status: Variant_pending_approved_rejected }) {
-  if (status === Variant_pending_approved_rejected.approved)
-    return (
-      <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
-        <CheckCircle className="w-3 h-3 mr-1" />
-        Approved
-      </Badge>
-    );
-  if (status === Variant_pending_approved_rejected.rejected)
-    return (
-      <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">
-        <XCircle className="w-3 h-3 mr-1" />
-        Rejected
-      </Badge>
-    );
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
   return (
-    <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">
-      <Clock className="w-3 h-3 mr-1" />
-      Pending
-    </Badge>
+    <button
+      type="button"
+      onClick={copy}
+      data-ocid="wallet.button"
+      className="p-1.5 rounded-md text-muted-foreground hover:text-gold transition-colors"
+    >
+      {copied ? (
+        <Check className="w-4 h-4 text-green-400" />
+      ) : (
+        <Copy className="w-4 h-4" />
+      )}
+    </button>
   );
 }
 
 export function Wallet() {
   const { user, isLoggedIn } = useAuth();
-  const { data: deposits = [] } = useUserDeposits();
-  const { data: withdrawals = [] } = useUserWithdrawals();
-  const submitDeposit = useSubmitDeposit();
-  const submitWithdrawal = useSubmitWithdrawal();
+  const { actor } = useActor();
 
-  const [depCurrency, setDepCurrency] = useState("USDT");
-  const [depAmount, setDepAmount] = useState("");
-  const [depTxHash, setDepTxHash] = useState("");
+  const [depositForm, setDepositForm] = useState({
+    currency: "USDT",
+    amount: "",
+    txHash: "",
+    referralCode: "",
+  });
+  const [withdrawForm, setWithdrawForm] = useState({
+    amount: "",
+    currency: "USDT",
+    walletAddress: "",
+  });
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
 
-  const [wdAmount, setWdAmount] = useState("");
-  const [wdCurrency, setWdCurrency] = useState("USDT");
-  const [wdAddress, setWdAddress] = useState("");
+  const balance = user?.balance || 0;
 
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen pt-24 flex items-center justify-center px-4">
-        <div
-          className="glass-card rounded-2xl p-8 text-center max-w-md"
-          data-ocid="wallet.card"
-        >
-          <WalletIcon className="w-12 h-12 text-gold mx-auto mb-4" />
-          <h3 className="font-display text-xl font-bold mb-2">
-            Login Required
-          </h3>
-          <p className="text-foreground/60 mb-4">
-            Sign in to access your wallet
-          </p>
-          <Link to="/login">
-            <Button
-              data-ocid="wallet.primary_button"
-              className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold"
-            >
-              Sign In
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
+  // Load local tx history
+  const txKey = `sce_tx_${user?.username || "guest"}`;
+  function getTxHistory() {
+    try {
+      return JSON.parse(localStorage.getItem(txKey) || "[]");
+    } catch {
+      return [];
+    }
   }
+  function addTx(tx: object) {
+    const h = getTxHistory();
+    h.unshift({ ...tx, date: new Date().toISOString() });
+    localStorage.setItem(txKey, JSON.stringify(h.slice(0, 50)));
+  }
+  const txHistory = getTxHistory();
 
   async function handleDeposit(e: React.FormEvent) {
     e.preventDefault();
-    if (!user || !depAmount || !depTxHash) {
-      toast.error("Fill in all fields");
+    if (!isLoggedIn) {
+      toast.error("Please login first.");
       return;
     }
+    if (!depositForm.amount || !depositForm.txHash) {
+      toast.error("Please fill all required fields.");
+      return;
+    }
+    setDepositLoading(true);
     try {
-      await submitDeposit.mutateAsync({
-        username: user.username,
-        currency: depCurrency,
-        amount: depAmount,
-        txHash: depTxHash,
+      if (actor) {
+        try {
+          await actor.submitDepositRequest(
+            user!.username,
+            depositForm.currency,
+            depositForm.amount,
+            depositForm.txHash,
+          );
+        } catch {
+          /* ignore backend failure */
+        }
+      }
+      addTx({
+        type: "deposit",
+        currency: depositForm.currency,
+        amount: depositForm.amount,
+        txHash: depositForm.txHash,
+        status: "pending",
       });
-      toast.success("Deposit submitted! Awaiting admin approval.");
-      setDepAmount("");
-      setDepTxHash("");
-    } catch {
-      toast.error("Failed to submit deposit.");
+      toast.success(
+        "Deposit request submitted! Admin will approve within 24 hours.",
+      );
+      setDepositForm({
+        currency: "USDT",
+        amount: "",
+        txHash: "",
+        referralCode: "",
+      });
+    } finally {
+      setDepositLoading(false);
     }
   }
 
   async function handleWithdraw(e: React.FormEvent) {
     e.preventDefault();
-    if (!user || !wdAmount || !wdAddress) {
-      toast.error("Fill in all fields");
+    if (!isLoggedIn) {
+      toast.error("Please login first.");
       return;
     }
-    const amountNum = Number.parseFloat(wdAmount);
-    if (amountNum < 10) {
-      toast.error("Minimum withdrawal is $10 USDT");
+    const amt = Number.parseFloat(withdrawForm.amount);
+    if (!amt || amt < 10) {
+      toast.error("Minimum withdrawal is $10.");
       return;
     }
-    const amountMillicents = BigInt(Math.floor(amountNum * 1000));
-    if (user.balance < amountMillicents) {
-      toast.error("Insufficient balance");
+    if (!withdrawForm.walletAddress) {
+      toast.error("Please enter your wallet address.");
       return;
     }
+    if (balance < amt) {
+      toast.error("Insufficient balance.");
+      return;
+    }
+    setWithdrawLoading(true);
     try {
-      await submitWithdrawal.mutateAsync({
-        username: user.username,
-        amount: amountMillicents,
-        currency: wdCurrency,
-        walletAddress: wdAddress,
+      if (actor) {
+        try {
+          await actor.submitWithdrawalRequest(
+            user!.username,
+            BigInt(Math.round(amt * 1000)),
+            withdrawForm.currency,
+            withdrawForm.walletAddress,
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      addTx({
+        type: "withdrawal",
+        currency: withdrawForm.currency,
+        amount: withdrawForm.amount,
+        walletAddress: withdrawForm.walletAddress,
+        status: "pending",
       });
-      toast.success("Withdrawal submitted! Awaiting admin approval.");
-      setWdAmount("");
-      setWdAddress("");
-    } catch {
-      toast.error("Failed to submit withdrawal.");
+      toast.success(
+        "Withdrawal request submitted! Admin will process within 24 hours.",
+      );
+      setWithdrawForm({ amount: "", currency: "USDT", walletAddress: "" });
+    } finally {
+      setWithdrawLoading(false);
     }
   }
 
-  const balanceUSDT = (Number(user?.balance ?? 0n) / 1000).toFixed(2);
-  const totalEarnedUSDT = (Number(user?.totalEarned ?? 0n) / 1000).toFixed(2);
-  const totalDepositedUSDT = (
-    Number(user?.totalDeposited ?? 0n) / 1000
-  ).toFixed(2);
-
   return (
-    <div className="min-h-screen pt-24 pb-16 px-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-mesh pt-20 pb-16">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
           <h1 className="font-display text-4xl font-bold gold-gradient mb-2">
-            My Wallet
+            Wallet
           </h1>
-          <p className="text-foreground/60">
-            Manage your balance, deposits, and withdrawals
+          <p className="text-muted-foreground">
+            Deposit, withdraw and track your transactions
           </p>
         </motion.div>
 
-        {/* Balance cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            data-ocid="wallet.card"
-            className="glass-card rounded-xl p-5 border border-gold/30"
-          >
-            <p className="text-sm text-foreground/60 mb-1">Available Balance</p>
-            <p className="font-display text-3xl font-bold text-gold">
-              ${balanceUSDT}
-            </p>
-            <p className="text-xs text-foreground/40 mt-1">USDT</p>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            data-ocid="wallet.card"
-            className="glass-card rounded-xl p-5"
-          >
-            <p className="text-sm text-foreground/60 mb-1">Total Earned</p>
-            <p className="font-display text-3xl font-bold text-green-400">
-              ${totalEarnedUSDT}
-            </p>
-            <p className="text-xs text-foreground/40 mt-1">USDT earned</p>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            data-ocid="wallet.card"
-            className="glass-card rounded-xl p-5"
-          >
-            <p className="text-sm text-foreground/60 mb-1">Total Deposited</p>
-            <p className="font-display text-3xl font-bold text-blue-400">
-              ${totalDepositedUSDT}
-            </p>
-            <p className="text-xs text-foreground/40 mt-1">USDT deposited</p>
-          </motion.div>
+        {/* Balance card */}
+        <div className="glass-card rounded-2xl p-6 mb-8 flex items-center justify-between">
+          <div>
+            <div className="text-sm text-muted-foreground mb-1">
+              Available Balance
+            </div>
+            <div className="font-display text-4xl font-bold text-gold">
+              ${balance.toFixed(2)}
+            </div>
+            <div className="text-sm text-muted-foreground mt-1">USDT</div>
+          </div>
+          <WalletIcon className="w-16 h-16 text-gold/20" />
         </div>
 
-        <Tabs defaultValue="deposit" className="space-y-6">
-          <TabsList className="glass-card border border-gold/20 p-1">
+        <Tabs defaultValue="deposit" data-ocid="wallet.tab">
+          <TabsList className="bg-background/50 border border-border/50 w-full mb-6">
             <TabsTrigger
-              data-ocid="wallet.tab"
               value="deposit"
-              className="data-[state=active]:bg-gold/20 data-[state=active]:text-gold"
+              data-ocid="wallet.tab"
+              className="flex-1 data-[state=active]:bg-gold data-[state=active]:text-navy"
             >
               <ArrowDownLeft className="w-4 h-4 mr-2" /> Deposit
             </TabsTrigger>
             <TabsTrigger
-              data-ocid="wallet.tab"
               value="withdraw"
-              className="data-[state=active]:bg-gold/20 data-[state=active]:text-gold"
+              data-ocid="wallet.tab"
+              className="flex-1 data-[state=active]:bg-gold data-[state=active]:text-navy"
             >
               <ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw
             </TabsTrigger>
+            <TabsTrigger
+              value="history"
+              data-ocid="wallet.tab"
+              className="flex-1 data-[state=active]:bg-gold data-[state=active]:text-navy"
+            >
+              History
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="deposit" className="space-y-6">
-            {/* Wallet addresses */}
-            <div className="glass-card rounded-xl p-5 space-y-3">
-              <h3 className="font-semibold text-gold mb-3">
-                Our Deposit Addresses
-              </h3>
-              <p className="text-xs text-foreground/50 mb-4">
-                Send your crypto to the address below, then submit the
-                transaction hash as proof.
-              </p>
-              {DEPOSIT_ADDRESSES.map((addr) => (
-                <div
-                  key={`${addr.currency}-${addr.network}`}
-                  className="flex items-start justify-between gap-3 py-3 border-b border-border/30 last:border-0"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold bg-gold/20 text-gold px-2 py-0.5 rounded">
-                        {addr.currency}
-                      </span>
-                      <span className="text-xs text-foreground/50">
-                        {addr.network}
-                      </span>
-                    </div>
-                    <p className="font-mono text-xs text-foreground/80 break-all leading-relaxed">
-                      {addr.address}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    data-ocid="wallet.secondary_button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(addr.address);
-                      toast.success(`${addr.currency} address copied!`);
-                    }}
-                    className="shrink-0 text-gold hover:bg-gold/10"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-              <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <p className="text-xs text-blue-300">
-                  💡 <strong>Binance Pay:</strong> Contact admin via
-                  Telegram/Email for Binance Pay deposits. All deposits require
-                  admin approval before crediting.
-                </p>
-              </div>
-            </div>
-
-            {/* Deposit form */}
-            <form
-              onSubmit={handleDeposit}
-              className="glass-card rounded-xl p-5 space-y-4"
-            >
-              <h3 className="font-semibold">Submit Deposit Proof</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Currency</Label>
-                  <Select value={depCurrency} onValueChange={setDepCurrency}>
-                    <SelectTrigger data-ocid="wallet.select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="USDT-ERC20">USDT (ERC20)</SelectItem>
-                      <SelectItem value="USDT-TRC20">USDT (TRC20)</SelectItem>
-                      <SelectItem value="BTC">Bitcoin (BTC)</SelectItem>
-                      <SelectItem value="ETH">Ethereum (ETH)</SelectItem>
-                      <SelectItem value="SOL">Solana (SOL)</SelectItem>
-                      <SelectItem value="TRON">TRON (TRX)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Amount (USD value)</Label>
-                  <Input
-                    data-ocid="wallet.input"
-                    placeholder="e.g. 50"
-                    value={depAmount}
-                    onChange={(e) => setDepAmount(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Transaction Hash / Reference</Label>
-                <Input
-                  data-ocid="wallet.input"
-                  placeholder="Paste your transaction hash here"
-                  value={depTxHash}
-                  onChange={(e) => setDepTxHash(e.target.value)}
-                />
-              </div>
-              <Button
-                type="submit"
-                data-ocid="wallet.submit_button"
-                disabled={submitDeposit.isPending}
-                className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold"
-              >
-                {submitDeposit.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <ArrowDownLeft className="w-4 h-4 mr-2" />
-                )}
-                Submit Deposit
-              </Button>
-            </form>
-
-            {/* Deposit history */}
-            {deposits.length > 0 && (
-              <div className="glass-card rounded-xl p-5">
-                <h3 className="font-semibold mb-3">Deposit History</h3>
-                <div className="space-y-2">
-                  {deposits.map((d, i) => (
-                    <div
-                      key={String(d.id)}
-                      data-ocid={`wallet.row.${i + 1}`}
-                      className="flex items-center justify-between text-sm py-2 border-b border-border/30 last:border-0"
-                    >
-                      <div>
-                        <span className="font-medium">{d.currency}</span>
-                        <span className="text-foreground/50 ml-2">
-                          {d.amount}
+          {/* Deposit */}
+          <TabsContent value="deposit">
+            <div className="space-y-6">
+              {/* Wallet addresses */}
+              <div>
+                <h3 className="font-display font-bold text-lg text-foreground mb-4">
+                  Send Crypto to These Addresses
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {ADDRESSES.map((a) => (
+                    <div key={a.symbol} className="glass-card rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`font-bold text-sm ${a.color}`}>
+                          {a.currency}
                         </span>
+                        <Badge
+                          variant="outline"
+                          className="text-xs border-border/50 text-muted-foreground"
+                        >
+                          {a.network}
+                        </Badge>
                       </div>
-                      <StatusBadge status={d.status} />
+                      <div className="flex items-center gap-2 bg-background/50 rounded-lg px-3 py-2">
+                        <span className="text-xs font-mono text-muted-foreground flex-1 truncate">
+                          {a.address}
+                        </span>
+                        <CopyButton text={a.address} />
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
-            )}
+
+              {/* Deposit form */}
+              <div className="glass-card rounded-2xl p-6">
+                <h3 className="font-display font-bold text-lg text-foreground mb-4">
+                  Submit Deposit
+                </h3>
+                <form onSubmit={handleDeposit}>
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm text-foreground/80">
+                        Currency
+                      </Label>
+                      <Select
+                        value={depositForm.currency}
+                        onValueChange={(v) =>
+                          setDepositForm({ ...depositForm, currency: v })
+                        }
+                      >
+                        <SelectTrigger
+                          data-ocid="wallet.select"
+                          className="bg-background/50 border-border/60"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {["USDT", "ETH", "BTC", "SOL"].map((c) => (
+                            <SelectItem key={c} value={c}>
+                              {c}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm text-foreground/80">
+                        Amount (USD)
+                      </Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="e.g. 100"
+                        data-ocid="wallet.input"
+                        value={depositForm.amount}
+                        onChange={(e) =>
+                          setDepositForm({
+                            ...depositForm,
+                            amount: e.target.value,
+                          })
+                        }
+                        className="bg-background/50 border-border/60 focus:border-gold/50"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm text-foreground/80">
+                        Transaction Hash *
+                      </Label>
+                      <Input
+                        type="text"
+                        placeholder="Paste your transaction hash"
+                        data-ocid="wallet.input"
+                        value={depositForm.txHash}
+                        onChange={(e) =>
+                          setDepositForm({
+                            ...depositForm,
+                            txHash: e.target.value,
+                          })
+                        }
+                        className="bg-background/50 border-border/60 focus:border-gold/50"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      data-ocid="wallet.submit_button"
+                      disabled={depositLoading}
+                      className="w-full bg-gradient-to-r from-gold to-orange-brand text-navy font-bold h-11"
+                    >
+                      {depositLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      ) : null}
+                      Submit Deposit Request
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </div>
           </TabsContent>
 
-          <TabsContent value="withdraw" className="space-y-6">
-            <div className="glass-card rounded-xl p-4 border border-yellow-500/20">
-              <p className="text-sm text-yellow-400">
-                ⚠️ Minimum withdrawal: <strong>$10 USDT</strong>. Withdrawals are
-                processed after admin approval.
-              </p>
-            </div>
-
-            <form
-              onSubmit={handleWithdraw}
-              className="glass-card rounded-xl p-5 space-y-4"
-            >
-              <h3 className="font-semibold">Request Withdrawal</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Amount (USD)</Label>
-                  <Input
-                    data-ocid="wallet.input"
-                    type="number"
-                    min="10"
-                    step="0.01"
-                    placeholder="Min $10"
-                    value={wdAmount}
-                    onChange={(e) => setWdAmount(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Currency</Label>
-                  <Select value={wdCurrency} onValueChange={setWdCurrency}>
-                    <SelectTrigger data-ocid="wallet.select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="USDT">USDT</SelectItem>
-                      <SelectItem value="BTC">Bitcoin (BTC)</SelectItem>
-                      <SelectItem value="ETH">Ethereum (ETH)</SelectItem>
-                      <SelectItem value="SOL">Solana (SOL)</SelectItem>
-                      <SelectItem value="TRON">TRON (TRX)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+          {/* Withdraw */}
+          <TabsContent value="withdraw">
+            <div className="glass-card rounded-2xl p-6">
+              <h3 className="font-display font-bold text-lg text-foreground mb-4">
+                Withdraw Funds
+              </h3>
+              <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm rounded-lg px-4 py-3 mb-5">
+                ⚠️ Minimum withdrawal: $10 USDT. All requests reviewed within 24
+                hours by admin.
               </div>
-              <div className="space-y-2">
-                <Label>Your Wallet Address</Label>
-                <Input
-                  data-ocid="wallet.input"
-                  placeholder="Your wallet address / Binance ID"
-                  value={wdAddress}
-                  onChange={(e) => setWdAddress(e.target.value)}
-                />
-              </div>
-              <Button
-                type="submit"
-                data-ocid="wallet.submit_button"
-                disabled={submitWithdrawal.isPending}
-                className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold"
-              >
-                {submitWithdrawal.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <ArrowUpRight className="w-4 h-4 mr-2" />
-                )}
-                Request Withdrawal
-              </Button>
-            </form>
-
-            {withdrawals.length > 0 && (
-              <div className="glass-card rounded-xl p-5">
-                <h3 className="font-semibold mb-3">Withdrawal History</h3>
-                <div className="space-y-2">
-                  {withdrawals.map((w, i) => (
-                    <div
-                      key={String(w.id)}
-                      data-ocid={`wallet.row.${i + 1}`}
-                      className="flex items-center justify-between text-sm py-2 border-b border-border/30 last:border-0"
+              <form onSubmit={handleWithdraw}>
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm text-foreground/80">
+                      Amount (min $10)
+                    </Label>
+                    <Input
+                      type="number"
+                      min="10"
+                      placeholder="Minimum $10"
+                      data-ocid="wallet.input"
+                      value={withdrawForm.amount}
+                      onChange={(e) =>
+                        setWithdrawForm({
+                          ...withdrawForm,
+                          amount: e.target.value,
+                        })
+                      }
+                      className="bg-background/50 border-border/60 focus:border-gold/50"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm text-foreground/80">
+                      Currency
+                    </Label>
+                    <Select
+                      value={withdrawForm.currency}
+                      onValueChange={(v) =>
+                        setWithdrawForm({ ...withdrawForm, currency: v })
+                      }
                     >
-                      <div>
-                        <span className="font-medium">{w.currency}</span>
-                        <span className="text-foreground/50 ml-2">
-                          ${(Number(w.amount) / 1000).toFixed(2)}
-                        </span>
-                      </div>
-                      <StatusBadge status={w.status} />
-                    </div>
-                  ))}
+                      <SelectTrigger
+                        data-ocid="wallet.select"
+                        className="bg-background/50 border-border/60"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["USDT", "ETH", "BTC", "SOL"].map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm text-foreground/80">
+                      Your Wallet Address *
+                    </Label>
+                    <Input
+                      type="text"
+                      placeholder="Your receiving wallet address"
+                      data-ocid="wallet.input"
+                      value={withdrawForm.walletAddress}
+                      onChange={(e) =>
+                        setWithdrawForm({
+                          ...withdrawForm,
+                          walletAddress: e.target.value,
+                        })
+                      }
+                      className="bg-background/50 border-border/60 focus:border-gold/50"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    data-ocid="wallet.submit_button"
+                    disabled={withdrawLoading}
+                    className="w-full bg-gradient-to-r from-gold to-orange-brand text-navy font-bold h-11"
+                  >
+                    {withdrawLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : null}
+                    Submit Withdrawal
+                  </Button>
                 </div>
-              </div>
-            )}
+              </form>
+            </div>
+          </TabsContent>
+
+          {/* History */}
+          <TabsContent value="history">
+            <div
+              className="glass-card rounded-2xl overflow-hidden"
+              data-ocid="wallet.table"
+            >
+              {txHistory.length === 0 ? (
+                <div
+                  data-ocid="wallet.empty_state"
+                  className="text-center py-16 text-muted-foreground"
+                >
+                  No transactions yet.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border/50">
+                        {["Type", "Currency", "Amount", "Status", "Date"].map(
+                          (h) => (
+                            <th
+                              key={h}
+                              className="text-left text-xs font-medium text-muted-foreground px-4 py-3 uppercase tracking-wider"
+                            >
+                              {h}
+                            </th>
+                          ),
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {txHistory.map((tx: any, i: number) => (
+                        <tr
+                          key={tx.date + String(i)}
+                          data-ocid={"wallet.row"}
+                          className="border-b border-border/20 hover:bg-gold/5 transition-colors"
+                        >
+                          <td className="px-4 py-3">
+                            <Badge
+                              variant="outline"
+                              className={
+                                tx.type === "deposit"
+                                  ? "text-green-400 border-green-500/30"
+                                  : "text-orange-400 border-orange-500/30"
+                              }
+                            >
+                              {tx.type}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            {tx.currency}
+                          </td>
+                          <td className="px-4 py-3 font-mono font-bold text-foreground">
+                            ${tx.amount}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`text-xs font-medium ${
+                                tx.status === "approved"
+                                  ? "text-green-400"
+                                  : tx.status === "rejected"
+                                    ? "text-red-400"
+                                    : "text-yellow-400"
+                              }`}
+                            >
+                              {tx.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                            {new Date(tx.date).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
       </div>

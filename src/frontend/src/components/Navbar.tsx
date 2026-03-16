@@ -1,19 +1,20 @@
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "@tanstack/react-router";
-import { Coins, Menu, Moon, Sun, TrendingUp, Wallet, X } from "lucide-react";
+import { Coins, Menu, Moon, Sun, TrendingUp, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 
-const navLinks = [
-  { to: "/", label: "Home", ocid: "nav.home_link" },
-  { to: "/crypto", label: "Crypto", ocid: "nav.crypto_link" },
-  { to: "/news", label: "News", ocid: "nav.news_link" },
-  { to: "/vlog", label: "Vlog", ocid: "nav.vlog_link" },
-  { to: "/trading", label: "Trading", ocid: "nav.trading_link" },
-  { to: "/earn", label: "Earn 💰", ocid: "nav.earn_link" },
-  { to: "/wallet", label: "Wallet", ocid: "nav.wallet_link" },
+const NAV_LINKS = [
+  { to: "/", label: "Home" },
+  { to: "/plans", label: "Plans" },
+  { to: "/signals", label: "Signals" },
+  { to: "/earn", label: "Earn 💰" },
+  { to: "/wallet", label: "Wallet" },
+  { to: "/leaderboard", label: "Leaders" },
+  { to: "/news", label: "News" },
+  { to: "/vlog", label: "Vlog" },
 ];
 
 export function Navbar() {
@@ -22,7 +23,12 @@ export function Navbar() {
   const { theme, setTheme } = useTheme();
   const { user, isLoggedIn, logout } = useAuth();
 
-  const balanceUSDT = user ? (Number(user.balance) / 1000).toFixed(2) : "0.00";
+  const balance = (user?.balance || 0).toFixed(2);
+
+  function isActive(to: string) {
+    if (to === "/") return location.pathname === "/";
+    return location.pathname.startsWith(to);
+  }
 
   return (
     <header
@@ -36,11 +42,11 @@ export function Navbar() {
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gold to-orange-brand flex items-center justify-center">
               <TrendingUp className="w-4 h-4 text-navy" />
             </div>
-            <div className="hidden sm:block">
-              <span className="font-display font-bold text-sm leading-tight gold-gradient">
-                Sandeep Karna
+            <div className="hidden sm:block leading-tight">
+              <span className="font-display font-bold text-sm gold-gradient">
+                Sandeep Karn
               </span>
-              <span className="block font-display text-xs text-orange-brand font-semibold leading-tight">
+              <span className="block font-display text-xs text-orange-brand font-semibold">
                 Crypto Empire
               </span>
             </div>
@@ -49,32 +55,26 @@ export function Navbar() {
             </span>
           </Link>
 
-          {/* Desktop nav */}
+          {/* Desktop Nav */}
           <nav className="hidden lg:flex items-center gap-0.5">
-            {navLinks.map((link) => {
-              const active =
-                location.pathname === link.to ||
-                (link.to !== "/" && location.pathname.startsWith(link.to));
-              return (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  data-ocid={link.ocid}
-                  className={`px-3 py-2 rounded-md text-xs font-medium transition-all duration-200 ${
-                    active
-                      ? "bg-gold/10 text-gold border border-gold/30"
-                      : "text-foreground/70 hover:text-gold hover:bg-gold/5"
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                data-ocid={"nav.link"}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+                  isActive(link.to)
+                    ? "bg-gold/10 text-gold border border-gold/30"
+                    : "text-foreground/70 hover:text-gold hover:bg-gold/5"
+                }`}
+              >
+                {link.label}
+              </Link>
+            ))}
           </nav>
 
           {/* Right side */}
           <div className="hidden lg:flex items-center gap-2">
-            {/* Theme toggle */}
             <button
               type="button"
               data-ocid="nav.toggle"
@@ -93,35 +93,26 @@ export function Navbar() {
               <>
                 <Link to="/wallet">
                   <div
-                    data-ocid="nav.wallet_link"
+                    data-ocid="nav.link"
                     className="flex items-center gap-1.5 bg-gold/10 border border-gold/20 rounded-full px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold/20 transition-colors cursor-pointer"
                   >
-                    <Wallet className="w-3 h-3" />${balanceUSDT}
+                    <Coins className="w-3 h-3" />${balance}
                   </div>
                 </Link>
                 <Link to="/profile">
-                  <span
+                  <div
                     data-ocid="nav.link"
-                    className="text-sm text-foreground/70 font-medium hover:text-gold transition-colors"
+                    className="w-8 h-8 rounded-full bg-gradient-to-br from-gold to-orange-brand flex items-center justify-center text-navy font-bold text-sm cursor-pointer"
                   >
-                    {user.username}
-                  </span>
+                    {user.username[0].toUpperCase()}
+                  </div>
                 </Link>
-                <Button
-                  data-ocid="nav.button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={logout}
-                  className="text-foreground/60 hover:text-red-400 text-xs"
-                >
-                  Logout
-                </Button>
               </>
             ) : (
               <>
                 <Link to="/login">
                   <Button
-                    data-ocid="nav.login_button"
+                    data-ocid="nav.button"
                     variant="ghost"
                     size="sm"
                     className="text-foreground/70 hover:text-gold text-sm"
@@ -131,7 +122,7 @@ export function Navbar() {
                 </Link>
                 <Link to="/signup">
                   <Button
-                    data-ocid="nav.signup_button"
+                    data-ocid="nav.button"
                     size="sm"
                     className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold text-sm"
                   >
@@ -142,7 +133,7 @@ export function Navbar() {
             )}
           </div>
 
-          {/* Mobile: theme + hamburger */}
+          {/* Mobile */}
           <div className="lg:hidden flex items-center gap-2">
             <button
               type="button"
@@ -179,34 +170,27 @@ export function Navbar() {
             style={{ background: "rgba(8,12,24,0.98)" }}
           >
             <div className="px-4 py-3 space-y-1">
-              {navLinks.map((link) => {
-                const active =
-                  location.pathname === link.to ||
-                  (link.to !== "/" && location.pathname.startsWith(link.to));
-                return (
-                  <Link
-                    key={link.to}
-                    to={link.to}
-                    data-ocid={link.ocid}
-                    onClick={() => setOpen(false)}
-                    className={`block px-3 py-2 rounded-md text-sm font-medium transition-all ${
-                      active
-                        ? "bg-gold/10 text-gold"
-                        : "text-foreground/70 hover:text-gold"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                );
-              })}
-              <div className="pt-2 border-t border-gold/10 space-y-2">
+              {NAV_LINKS.map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  data-ocid="nav.link"
+                  onClick={() => setOpen(false)}
+                  className={`block px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                    isActive(link.to)
+                      ? "bg-gold/10 text-gold"
+                      : "text-foreground/70 hover:text-gold"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+              <div className="pt-2 border-t border-gold/10 space-y-1">
                 {isLoggedIn && user ? (
                   <>
-                    <Link to="/wallet" onClick={() => setOpen(false)}>
-                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-gold">
-                        <Coins className="w-4 h-4" /> ${balanceUSDT} USDT
-                      </div>
-                    </Link>
+                    <div className="px-3 py-2 text-sm text-gold flex items-center gap-2">
+                      <Coins className="w-4 h-4" /> ${balance} USDT
+                    </div>
                     <Link
                       to="/profile"
                       onClick={() => setOpen(false)}
@@ -239,7 +223,7 @@ export function Navbar() {
                       onClick={() => setOpen(false)}
                       className="block px-3 py-2 text-sm text-gold font-medium"
                     >
-                      Sign Up
+                      Sign Up Free
                     </Link>
                   </>
                 )}
