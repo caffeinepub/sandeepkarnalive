@@ -1,6 +1,9 @@
 import { Badge } from "@/components/ui/badge";
-import { Play, Video } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CheckCircle, Play, Video } from "lucide-react";
 import { motion } from "motion/react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 function loadLS<T>(key: string, def: T): T {
   try {
@@ -11,7 +14,54 @@ function loadLS<T>(key: string, def: T): T {
 }
 
 export function Vlog() {
-  const vlogs = loadLS<any[]>("sce_admin_vlogs", []);
+  const [vlogs, setVlogs] = useState<any[]>([]);
+  const [watched, setWatched] = useState<number[]>([]);
+  const [claimed, setClaimed] = useState<number[]>([]);
+
+  useEffect(() => {
+    setVlogs(loadLS("sce_admin_vlogs", []));
+    setWatched(loadLS("sce_watched_vlogs", []));
+    setClaimed(loadLS("sce_claimed_vlog_rewards", []));
+  }, []);
+
+  function handleWatch(vlog: any) {
+    if (vlog.videoUrl) {
+      window.open(vlog.videoUrl, "_blank");
+    }
+    if (!watched.includes(vlog.id)) {
+      const updated = [...watched, vlog.id];
+      setWatched(updated);
+      localStorage.setItem("sce_watched_vlogs", JSON.stringify(updated));
+    }
+  }
+
+  function handleClaim(vlog: any) {
+    if (claimed.includes(vlog.id)) return;
+    const reward = vlog.watchReward || 0;
+    if (reward <= 0) return;
+    const userRaw = localStorage.getItem("sce_current_user");
+    if (!userRaw) {
+      toast.error("Please login to claim reward");
+      return;
+    }
+    const user = JSON.parse(userRaw);
+    user.balance = (user.balance || 0) + reward;
+    user.totalEarned = (user.totalEarned || 0) + reward;
+    localStorage.setItem("sce_current_user", JSON.stringify(user));
+    const users = JSON.parse(localStorage.getItem("sce_users") || "[]");
+    const idx = users.findIndex((u: any) => u.username === user.username);
+    if (idx !== -1) {
+      users[idx] = user;
+      localStorage.setItem("sce_users", JSON.stringify(users));
+    }
+    const updatedClaimed = [...claimed, vlog.id];
+    setClaimed(updatedClaimed);
+    localStorage.setItem(
+      "sce_claimed_vlog_rewards",
+      JSON.stringify(updatedClaimed),
+    );
+    toast.success(`+${reward} USDT credited to your balance!`);
+  }
 
   return (
     <div className="min-h-screen bg-mesh pt-24 pb-16">
@@ -25,11 +75,10 @@ export function Vlog() {
             Video Content
           </Badge>
           <h1 className="font-display text-4xl font-bold gold-gradient mb-2">
-            Vlogs & Videos
+            Vlogs &amp; Videos
           </h1>
           <p className="text-muted-foreground">
-            Trading insights, crypto analysis, and journey documentation by
-            Sandeep Karna
+            Watch videos and earn USDT rewards
           </p>
         </motion.div>
 
@@ -54,6 +103,7 @@ export function Vlog() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
+                data-ocid={`vlog.item.${i + 1}`}
                 className="glass-card glass-card-hover rounded-2xl overflow-hidden"
               >
                 <div className="aspect-video bg-background/50 relative flex items-center justify-center overflow-hidden">
@@ -68,18 +118,16 @@ export function Vlog() {
                       <Play className="w-12 h-12 text-gold/30" />
                     </div>
                   )}
-                  {v.videoUrl && (
-                    <a
-                      href={v.videoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity"
-                    >
-                      <div className="w-14 h-14 rounded-full bg-gold/20 border border-gold/40 flex items-center justify-center">
-                        <Play className="w-7 h-7 text-gold ml-1" />
-                      </div>
-                    </a>
-                  )}
+                  <button
+                    onClick={() => handleWatch(v)}
+                    type="button"
+                    className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity"
+                    data-ocid={`vlog.watch_button.${i + 1}`}
+                  >
+                    <div className="w-14 h-14 rounded-full bg-gold/20 border border-gold/40 flex items-center justify-center">
+                      <Play className="w-7 h-7 text-gold ml-1" />
+                    </div>
+                  </button>
                 </div>
                 <div className="p-4">
                   <h3 className="font-bold text-foreground line-clamp-2 mb-1">
@@ -90,8 +138,36 @@ export function Vlog() {
                       {v.description}
                     </p>
                   )}
-                  <div className="text-xs text-muted-foreground mt-2">
-                    {v.date}
+                  <div className="flex items-center justify-between mt-3">
+                    <span className="text-xs text-muted-foreground">
+                      {v.date}
+                    </span>
+                    {v.watchReward > 0 &&
+                      (claimed.includes(v.id) ? (
+                        <Badge className="bg-gold/10 text-gold border-gold/30 text-xs flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" /> Claimed{" "}
+                          {v.watchReward} USDT
+                        </Badge>
+                      ) : watched.includes(v.id) ? (
+                        <Button
+                          size="sm"
+                          onClick={() => handleClaim(v)}
+                          data-ocid={`vlog.claim_button.${i + 1}`}
+                          className="bg-gold text-background hover:bg-gold/90 text-xs h-7 px-3"
+                        >
+                          Claim {v.watchReward} USDT
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleWatch(v)}
+                          data-ocid={`vlog.watch_button.${i + 1}`}
+                          className="border-gold/30 text-gold hover:bg-gold/10 text-xs h-7 px-3"
+                        >
+                          Watch &amp; Earn
+                        </Button>
+                      ))}
                   </div>
                 </div>
               </motion.div>

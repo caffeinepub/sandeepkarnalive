@@ -18,6 +18,7 @@ import {
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
+import React from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -38,6 +39,7 @@ type Vlog = {
   description: string;
   videoUrl: string;
   thumbnailUrl: string;
+  watchReward: number;
   date: string;
 };
 type Announcement = {
@@ -136,6 +138,75 @@ function saveLS(key: string, val: unknown) {
   localStorage.setItem(key, JSON.stringify(val));
 }
 
+function AdminSettings() {
+  const [settings, setSettings] = React.useState<{ dailyLimit: number }>(() => {
+    try {
+      return (
+        JSON.parse(localStorage.getItem("sce_admin_settings") || "{}") || {
+          dailyLimit: 500,
+        }
+      );
+    } catch {
+      return { dailyLimit: 500 };
+    }
+  });
+  const [saved, setSaved] = React.useState(false);
+
+  function save() {
+    localStorage.setItem("sce_admin_settings", JSON.stringify(settings));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    toast.success("Settings saved!");
+  }
+
+  return (
+    <div
+      className="glass-card rounded-2xl p-6 max-w-lg"
+      data-ocid="admin.settings.panel"
+    >
+      <h2 className="font-display text-xl font-bold text-foreground mb-6">
+        Site Settings
+      </h2>
+      <div className="space-y-5">
+        <div>
+          <Label
+            htmlFor="daily-limit"
+            className="text-sm font-semibold text-foreground mb-1.5 block"
+          >
+            Daily Earning Limit (USDT)
+          </Label>
+          <p className="text-xs text-muted-foreground mb-2">
+            Maximum USDT a user can earn per day. Change this to control daily
+            payouts.
+          </p>
+          <Input
+            id="daily-limit"
+            type="number"
+            min={1}
+            value={settings.dailyLimit}
+            onChange={(e) =>
+              setSettings((s) => ({
+                ...s,
+                dailyLimit: Number(e.target.value) || 500,
+              }))
+            }
+            data-ocid="admin.settings.input"
+            className="max-w-xs"
+            placeholder="500"
+          />
+        </div>
+        <Button
+          onClick={save}
+          data-ocid="admin.settings.save_button"
+          className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold"
+        >
+          {saved ? "✓ Saved!" : "Save Settings"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminDashboard() {
   useAdminCheck();
   const navigate = useNavigate();
@@ -190,6 +261,7 @@ export function AdminDashboard() {
     description: "",
     videoUrl: "",
     thumbnailUrl: "",
+    watchReward: 0.1,
   });
   const [announcementForm, setAnnouncementForm] = useState({
     title: "",
@@ -277,7 +349,13 @@ export function AdminDashboard() {
     setVlogs(updated);
     saveLS("sce_admin_vlogs", updated);
     toast.success("Vlog created!");
-    setVlogForm({ title: "", description: "", videoUrl: "", thumbnailUrl: "" });
+    setVlogForm({
+      title: "",
+      description: "",
+      videoUrl: "",
+      thumbnailUrl: "",
+      watchReward: 0.1,
+    });
     setLoading(false);
   }
 
@@ -459,6 +537,7 @@ export function AdminDashboard() {
               ["withdrawals", `Withdrawals (${withdrawals.length})`],
               ["futures", "Futures"],
               ["users", "Users"],
+              ["settings", "Settings"],
             ].map(([val, label]) => (
               <TabsTrigger
                 key={val}
@@ -546,27 +625,20 @@ export function AdminDashboard() {
                   )}
                   <div className="space-y-1">
                     <Label className="text-xs text-foreground/70">
-                      Upload Video File
+                      Video URL *
                     </Label>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      data-ocid="admin.upload_button"
-                      onChange={(e) => handleVlogFileUpload(e, "videoUrl")}
-                      className="w-full text-xs text-muted-foreground bg-background/50 border border-border/60 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Or paste URL below:
-                    </p>
                     <Input
                       type="text"
                       value={vlogForm.videoUrl}
-                      placeholder="YouTube or direct video URL"
+                      placeholder="Paste YouTube URL or direct video link"
                       onChange={(e) =>
                         setVlogForm({ ...vlogForm, videoUrl: e.target.value })
                       }
                       className="bg-background/50 border-border/60 focus:border-gold/50 h-9 text-sm"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      YouTube, Google Drive, or any direct video URL
+                    </p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs text-foreground/70">
@@ -610,6 +682,29 @@ export function AdminDashboard() {
                       className="bg-background/50 border-border/60 focus:border-gold/50 text-sm h-20 resize-none"
                       placeholder="Vlog description"
                     />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-foreground/70">
+                      Watch Reward (USDT)
+                    </Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="0.8"
+                      value={vlogForm.watchReward}
+                      onChange={(e) =>
+                        setVlogForm({
+                          ...vlogForm,
+                          watchReward: Number.parseFloat(e.target.value) || 0.1,
+                        })
+                      }
+                      className="bg-background/50 border-border/60 focus:border-gold/50 h-9 text-sm"
+                      placeholder="e.g. 0.5"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Reward users earn for watching this vlog
+                    </p>
                   </div>
                   <Button
                     type="submit"
@@ -1955,6 +2050,11 @@ export function AdminDashboard() {
                 </div>
               )}
             </div>
+          </TabsContent>
+
+          {/* Settings */}
+          <TabsContent value="settings">
+            <AdminSettings />
           </TabsContent>
         </Tabs>
       </div>

@@ -3,13 +3,25 @@ import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
+  Award,
+  BarChart2,
   ChevronRight,
+  Coins,
   Crown,
   ExternalLink,
+  Flame,
+  Gift,
+  Heart,
   Play,
+  RefreshCw,
+  Star,
+  TrendingUp,
+  Users,
+  Video,
   Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 
 function loadLS<T>(key: string, def: T): T {
@@ -24,110 +36,231 @@ type AdminTask = {
   id: string;
   title: string;
   description: string;
+  category: string;
   adUrl: string;
   imageUrl?: string;
   videoUrl?: string;
+  audioUrl?: string;
   steps: string[];
   reward: number;
   date: string;
 };
 
-function TasksPreview() {
-  const adminTasks: AdminTask[] = loadLS<AdminTask[]>("sce_admin_tasks", []);
-  const preview = adminTasks.slice(0, 3);
+const EARN_CATEGORIES = [
+  {
+    key: "Daily",
+    label: "Daily Tasks",
+    icon: <Flame className="w-6 h-6 text-gold" />,
+    desc: "Login bonus, check-in streak, daily rewards",
+    color: "from-gold/20 to-orange-brand/10",
+  },
+  {
+    key: "Social",
+    label: "Social Tasks",
+    icon: <Users className="w-6 h-6 text-blue-400" />,
+    desc: "Follow, like, comment on social channels",
+    color: "from-blue-500/10 to-blue-400/5",
+  },
+  {
+    key: "Video",
+    label: "Video Tasks",
+    icon: <Video className="w-6 h-6 text-purple-400" />,
+    desc: "Watch vlogs, ads, and video content",
+    color: "from-purple-500/10 to-purple-400/5",
+  },
+  {
+    key: "Trading",
+    label: "Trading Tasks",
+    icon: <TrendingUp className="w-6 h-6 text-green-400" />,
+    desc: "Trade signals, buy/sell crypto tasks",
+    color: "from-green-500/10 to-green-400/5",
+  },
+  {
+    key: "Invest",
+    label: "Investment Tasks",
+    icon: <BarChart2 className="w-6 h-6 text-cyan-400" />,
+    desc: "Investment plans and growth rewards",
+    color: "from-cyan-500/10 to-cyan-400/5",
+  },
+  {
+    key: "Referral",
+    label: "Referral Tasks",
+    icon: <Heart className="w-6 h-6 text-pink-400" />,
+    desc: "Invite friends and earn $1 per referral",
+    color: "from-pink-500/10 to-pink-400/5",
+  },
+  {
+    key: "Bonus",
+    label: "Bonus Tasks",
+    icon: <Gift className="w-6 h-6 text-yellow-400" />,
+    desc: "Special bonus and promo rewards",
+    color: "from-yellow-500/10 to-yellow-400/5",
+  },
+  {
+    key: "General",
+    label: "General Tasks",
+    icon: <Zap className="w-6 h-6 text-gold" />,
+    desc: "Other tasks added by admin",
+    color: "from-gold/10 to-orange-brand/5",
+  },
+];
 
-  if (preview.length === 0) {
-    return (
-      <div
-        data-ocid="home.tasks.empty_state"
-        className="glass-card rounded-2xl p-8 text-center text-muted-foreground"
-      >
-        <Play className="w-10 h-10 mx-auto mb-3 text-gold/20" />
-        <p className="text-sm font-medium">
-          Admin will add tasks soon. Check back daily!
-        </p>
-        <p className="text-xs mt-1 text-muted-foreground/60">
-          Tasks will appear here once added.
-        </p>
-      </div>
-    );
-  }
+function CategorySection({
+  cat,
+  tasks,
+}: { cat: (typeof EARN_CATEGORIES)[0]; tasks: AdminTask[] }) {
+  const catTasks = tasks.filter((t) => (t.category || "General") === cat.key);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {preview.map((task, i) => (
-        <motion.div
-          key={task.id}
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ delay: i * 0.07 }}
-          data-ocid={`home.tasks.item.${i + 1}`}
-          className="glass-card rounded-xl overflow-hidden border border-border/30 hover:border-gold/30 transition-colors"
-        >
-          {task.imageUrl && (
-            <img
-              src={task.imageUrl}
-              alt={task.title}
-              className="w-full h-32 object-cover"
-            />
-          )}
-          {task.videoUrl && !task.imageUrl && (
-            <div className="w-full h-32 bg-background/50 flex items-center justify-center">
-              <Play className="w-10 h-10 text-gold/40" />
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.4 }}
+      className="glass-card rounded-2xl overflow-hidden"
+      data-ocid={`home.earn.${cat.key.toLowerCase()}.section`}
+    >
+      <div
+        className={`bg-gradient-to-r ${cat.color} p-5 border-b border-border/20`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-background/30 flex items-center justify-center">
+              {cat.icon}
             </div>
-          )}
-          <div className="p-4">
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <span className="font-semibold text-foreground text-sm leading-tight">
-                {task.title}
-              </span>
-              <span className="text-xs text-green-400 font-bold shrink-0">
-                ${task.reward}
-              </span>
+            <div>
+              <h3 className="font-display font-bold text-foreground text-lg">
+                {cat.label}
+              </h3>
+              <p className="text-xs text-muted-foreground">{cat.desc}</p>
             </div>
-            {task.description && (
-              <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
-                {task.description}
-              </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {catTasks.length > 0 && (
+              <Badge className="bg-gold/10 text-gold border-gold/30 text-xs">
+                {catTasks.length} task{catTasks.length !== 1 ? "s" : ""}
+              </Badge>
             )}
-            <div className="flex flex-wrap gap-1 mb-3">
-              {task.steps.map((s) => (
-                <span
-                  key={s}
-                  className="text-xs border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground"
-                >
-                  {s}
-                </span>
-              ))}
-            </div>
             <Link to="/earn">
               <Button
                 size="sm"
-                data-ocid="home.primary_button"
-                className="bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20 text-xs w-full"
+                variant="outline"
+                data-ocid="home.earn.link"
+                className="border-gold/30 text-gold hover:bg-gold/10 text-xs h-7"
               >
-                Do Task <ArrowRight className="w-3 h-3 ml-1" />
+                View All <ChevronRight className="w-3 h-3 ml-0.5" />
               </Button>
             </Link>
           </div>
-        </motion.div>
-      ))}
-    </div>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {catTasks.length === 0 ? (
+          <div
+            data-ocid={`home.earn.${cat.key.toLowerCase()}.empty_state`}
+            className="text-center py-6 text-muted-foreground"
+          >
+            <div className="w-10 h-10 rounded-full bg-background/30 flex items-center justify-center mx-auto mb-2">
+              {cat.icon}
+            </div>
+            <p className="text-xs font-medium">No tasks yet in this category</p>
+            <p className="text-xs text-muted-foreground/60 mt-0.5">
+              Admin will add tasks soon
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {catTasks.slice(0, 4).map((task, i) => (
+              <div
+                key={task.id}
+                data-ocid={`home.earn.${cat.key.toLowerCase()}.item.${i + 1}`}
+                className="border border-border/30 rounded-xl p-3 bg-background/20 hover:border-gold/30 transition-colors"
+              >
+                {task.imageUrl && (
+                  <img
+                    src={task.imageUrl}
+                    alt={task.title}
+                    className="w-full h-24 object-cover rounded-lg mb-2"
+                  />
+                )}
+                {task.videoUrl && !task.imageUrl && (
+                  <div className="w-full h-24 bg-background/50 flex items-center justify-center rounded-lg mb-2">
+                    <Play className="w-8 h-8 text-gold/40" />
+                  </div>
+                )}
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <span className="font-semibold text-foreground text-xs leading-tight">
+                    {task.title}
+                  </span>
+                  <span className="text-xs text-green-400 font-bold shrink-0">
+                    ${task.reward.toFixed(2)}
+                  </span>
+                </div>
+                {task.description && (
+                  <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                    {task.description}
+                  </p>
+                )}
+                {task.steps.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {task.steps.map((s) => (
+                      <span
+                        key={s}
+                        className="text-xs border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {task.adUrl && (
+                  <a
+                    href={task.adUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-gold hover:underline flex items-center gap-1 mb-2"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Open Link
+                  </a>
+                )}
+                <Link to="/earn">
+                  <Button
+                    size="sm"
+                    data-ocid="home.earn.task.primary_button"
+                    className="bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20 text-xs w-full h-7"
+                  >
+                    Do Task <ArrowRight className="w-3 h-3 ml-1" />
+                  </Button>
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }
 
 export function Home() {
   const { user, isLoggedIn } = useAuth();
 
-  const ads = loadLS<any[]>("sce_admin_ads", []);
-  const announcements = loadLS<any[]>("sce_admin_announcements", []);
-  const vlogs = loadLS<any[]>("sce_admin_vlogs", []);
+  const [adminTasks, setAdminTasks] = useState<AdminTask[]>([]);
+  const [ads, setAds] = useState<any[]>([]);
+  const [vlogs, setVlogs] = useState<any[]>([]);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+
+  useEffect(() => {
+    setAdminTasks(loadLS<AdminTask[]>("sce_admin_tasks", []));
+    setAds(loadLS<any[]>("sce_admin_ads", []));
+    setVlogs(loadLS<any[]>("sce_admin_vlogs", []));
+    setAnnouncements(loadLS<any[]>("sce_admin_announcements", []));
+  }, []);
 
   const announcementText =
     announcements.length > 0
       ? announcements.map((a: any) => a.title).join("  •  ")
-      : "Earn up to 500 USDT daily  •  Daily Spin Rewards  •  500+ Earning Methods  •  New Gold Plan available!  •  Referral bonus: $1 per invite";
+      : "Earn up to 500 USDT daily  •  Daily Spin Rewards  •  500+ Earning Methods  •  Referral bonus: $1 per invite";
 
   return (
     <div className="min-h-screen bg-mesh">
@@ -321,16 +454,35 @@ export function Home() {
         </div>
       </section>
 
+      {/* Ads & Promotions Section (if no ads at top) */}
+      {ads.length === 0 && (
+        <section className="py-8 px-4">
+          <div className="max-w-5xl mx-auto">
+            <div
+              className="glass-card rounded-2xl p-6 text-center border border-gold/10"
+              data-ocid="home.ads.empty_state"
+            >
+              <Badge className="bg-gold/10 text-gold border-gold/20 mb-2">
+                Advertisement
+              </Badge>
+              <p className="text-sm text-muted-foreground">
+                Admin will add ads & promotions here. Watch them to earn USDT!
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Latest Vlogs */}
-      <section className="py-16 px-4">
+      <section className="py-10 px-4">
         <div className="max-w-5xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="font-display text-3xl font-bold text-foreground">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="font-display text-2xl font-bold text-foreground">
               Latest <span className="gold-gradient">Vlogs</span>
             </h2>
             <Link to="/vlog">
               <Button
-                data-ocid="home.link"
+                data-ocid="home.vlog.link"
                 variant="ghost"
                 className="text-gold hover:bg-gold/10"
               >
@@ -371,6 +523,13 @@ export function Home() {
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                       {v.description}
                     </p>
+                    {v.watchReward > 0 && (
+                      <div className="mt-2">
+                        <span className="inline-flex items-center gap-1 text-xs bg-gold/10 text-gold border border-gold/30 rounded-full px-2 py-0.5">
+                          +{v.watchReward} USDT
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               ))}
@@ -389,76 +548,326 @@ export function Home() {
         </div>
       </section>
 
-      {/* Tasks Preview */}
-      <section className="py-16 px-4 bg-background/20">
+      {/* Daily Spin Section */}
+      <section className="py-10 px-4 bg-background/20">
         <div className="max-w-5xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="font-display text-3xl font-bold text-foreground">
-                Active <span className="gold-gradient">Tasks</span>
-              </h2>
-              <p className="text-muted-foreground text-sm mt-1">
-                Complete tasks to earn USDT rewards
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="glass-card rounded-2xl p-6 flex flex-col md:flex-row items-center gap-6"
+            data-ocid="home.spin.section"
+          >
+            <div className="w-20 h-20 rounded-full border-4 border-gold/40 bg-gradient-to-br from-gold/20 to-orange-brand/20 flex items-center justify-center shadow-[0_0_24px_rgba(255,182,0,0.2)] shrink-0">
+              <RefreshCw className="w-10 h-10 text-gold" />
+            </div>
+            <div className="flex-1 text-center md:text-left">
+              <div className="flex items-center gap-2 justify-center md:justify-start mb-1">
+                <h3 className="font-display font-bold text-xl text-foreground">
+                  Daily Spin
+                </h3>
+                <Badge className="bg-gold/10 text-gold border-gold/20 text-xs">
+                  Once per day
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Spin the wheel every day to win $0.10 – $1.00 USDT instantly!
               </p>
+              <div className="flex items-center gap-3 justify-center md:justify-start">
+                <Coins className="w-4 h-4 text-green-400" />
+                <span className="text-sm text-green-400 font-bold">
+                  $0.10 – $1.00 USDT per spin
+                </span>
+              </div>
             </div>
             <Link to="/earn">
               <Button
-                variant="outline"
-                size="sm"
-                data-ocid="home.secondary_button"
-                className="border-gold/30 text-gold hover:bg-gold/10"
+                data-ocid="home.spin.primary_button"
+                className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold px-6 shrink-0"
               >
-                View All <ChevronRight className="w-4 h-4 ml-1" />
+                🎰 Spin Now <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
             </Link>
-          </div>
-          <TasksPreview />
+          </motion.div>
         </div>
       </section>
 
-      {/* Earn Methods */}
-      <section className="py-16 px-4">
+      {/* All Earning Category Sections */}
+      <section className="py-10 px-4">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
+          <div className="text-center mb-8">
             <h2 className="font-display text-3xl font-bold text-foreground mb-2">
-              How to <span className="gold-gradient">Earn</span>
+              Ways to <span className="gold-gradient">Earn</span>
             </h2>
             <p className="text-muted-foreground">
-              Multiple ways to grow your income daily
+              Choose from 500+ earning methods across all categories
             </p>
           </div>
-          <div className="grid grid-cols-1 max-w-sm mx-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0 }}
-              className="glass-card rounded-2xl p-6 text-center group hover:ring-1 hover:ring-gold/30 transition-all"
-              data-ocid="home.earn.card"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-gold/10 flex items-center justify-center mx-auto mb-4 group-hover:bg-gold/20 transition-colors">
-                <Zap className="w-7 h-7 text-gold" />
+
+          <div className="space-y-6">
+            {EARN_CATEGORIES.map((cat) => (
+              <CategorySection key={cat.key} cat={cat} tasks={adminTasks} />
+            ))}
+          </div>
+
+          <div className="mt-8 text-center">
+            <Link to="/earn">
+              <Button
+                data-ocid="home.earn.primary_button"
+                size="lg"
+                className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold px-8"
+              >
+                Go to Earn Page <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Investment Income Section */}
+      <section className="py-16 px-4" data-ocid="home.investment.section">
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-10"
+          >
+            <Badge className="bg-green-500/10 text-green-400 border-green-500/20 mb-4">
+              💰 Investment Income
+            </Badge>
+            <h2 className="font-display text-3xl md:text-4xl font-bold text-foreground mb-3">
+              Invest & Earn <span className="gold-gradient">Daily Income</span>
+            </h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              Deposit USDT once and earn guaranteed daily profits. Admin manages
+              all payouts. Withdraw anytime after minimum hold period.
+            </p>
+          </motion.div>
+
+          {/* Plan highlights */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+            {[
+              {
+                name: "Starter",
+                deposit: "$100",
+                daily: "$5/day",
+                monthly: "$150",
+                color: "from-slate-400/20 to-slate-600/10",
+                border: "border-slate-400/20",
+                badge: "bg-slate-400/20 text-slate-300",
+              },
+              {
+                name: "Gold ⭐",
+                deposit: "$5,000",
+                daily: "$400/day",
+                monthly: "$12,000",
+                color: "from-gold/20 to-orange-brand/10",
+                border: "border-gold/30",
+                badge: "bg-gold/20 text-gold",
+                popular: true,
+              },
+              {
+                name: "Diamond",
+                deposit: "$50,000",
+                daily: "$5,000/day",
+                monthly: "$150,000",
+                color: "from-cyan-400/20 to-cyan-600/10",
+                border: "border-cyan-400/20",
+                badge: "bg-cyan-400/20 text-cyan-300",
+              },
+            ].map((plan, i) => (
+              <motion.div
+                key={plan.name}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.08 }}
+                data-ocid={`home.investment.item.${i + 1}`}
+                className={`glass-card rounded-2xl p-5 border ${plan.border} bg-gradient-to-br ${plan.color} relative`}
+              >
+                {plan.popular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <Badge className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold text-xs px-3">
+                      🏆 Most Popular
+                    </Badge>
+                  </div>
+                )}
+                <div className="flex items-center justify-between mb-4">
+                  <span className="font-display font-bold text-foreground text-lg">
+                    {plan.name}
+                  </span>
+                  <Badge className={`${plan.badge} border text-xs`}>Plan</Badge>
+                </div>
+                <div className="text-center py-3 bg-background/30 rounded-xl mb-4">
+                  <div className="text-3xl font-display font-bold text-gold">
+                    {plan.daily}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Daily earnings
+                  </div>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Min Deposit</span>
+                    <span className="font-bold text-foreground">
+                      {plan.deposit}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      Monthly Return
+                    </span>
+                    <span className="font-bold text-green-400">
+                      {plan.monthly}
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Features */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+            {[
+              { icon: "🔒", label: "Secure Deposits", sub: "Admin verified" },
+              { icon: "📅", label: "Daily Payouts", sub: "Every 24 hours" },
+              { icon: "💳", label: "Easy Withdraw", sub: "Min $10 USDT" },
+              {
+                icon: "📈",
+                label: "Up to 10% Daily",
+                sub: "Guaranteed returns",
+              },
+            ].map((f) => (
+              <div
+                key={f.label}
+                className="glass-card rounded-xl p-3 text-center"
+              >
+                <div className="text-2xl mb-1">{f.icon}</div>
+                <div className="text-xs font-bold text-foreground">
+                  {f.label}
+                </div>
+                <div className="text-xs text-muted-foreground">{f.sub}</div>
               </div>
-              <h3 className="font-display font-bold text-xl text-foreground mb-2">
-                Ways to Earn
-              </h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Complete tasks, watch ads, daily spin, social tasks and 500+
-                earning methods
-              </p>
-              <div className="text-xs text-green-400 font-semibold mb-4">
-                Up to $500 USDT/day
-              </div>
-              <Link to="/earn">
+            ))}
+          </div>
+
+          {/* CTA */}
+          <div className="text-center">
+            <p className="text-muted-foreground text-sm mb-4">
+              Thousands of investors already earning daily. Join now and start
+              your passive income journey.
+            </p>
+            <div className="flex flex-wrap gap-3 justify-center">
+              <Link to="/wallet">
                 <Button
-                  size="sm"
-                  data-ocid="home.primary_button"
-                  className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold w-full"
+                  data-ocid="home.investment.deposit_button"
+                  size="lg"
+                  className="bg-gradient-to-r from-green-500 to-green-600 text-white font-bold px-8 hover:opacity-90 shadow-[0_0_20px_rgba(34,197,94,0.3)]"
                 >
-                  Start Earning <ArrowRight className="w-4 h-4 ml-1" />
+                  💰 Deposit & Invest Now
                 </Button>
               </Link>
-            </motion.div>
+              <Link to="/plans">
+                <Button
+                  data-ocid="home.investment.plans_button"
+                  size="lg"
+                  variant="outline"
+                  className="border-gold/40 text-gold hover:bg-gold/10 px-8"
+                >
+                  View All Plans
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Referral Quick Section */}
+      <section className="py-10 px-4 bg-background/20">
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="glass-card rounded-2xl p-6 flex flex-col md:flex-row items-center gap-6"
+            data-ocid="home.referral.section"
+          >
+            <div className="w-20 h-20 rounded-full bg-pink-500/10 border-2 border-pink-400/30 flex items-center justify-center shrink-0">
+              <Users className="w-10 h-10 text-pink-400" />
+            </div>
+            <div className="flex-1 text-center md:text-left">
+              <h3 className="font-display font-bold text-xl text-foreground mb-1">
+                Referral Program
+              </h3>
+              <p className="text-sm text-muted-foreground mb-2">
+                Invite your friends and earn $1 USDT for every referral who
+                joins!
+              </p>
+              {isLoggedIn && user?.referralCode && (
+                <div className="inline-flex items-center gap-2 bg-background/40 border border-pink-400/20 rounded-lg px-3 py-1.5">
+                  <span className="text-xs text-muted-foreground">
+                    Your code:
+                  </span>
+                  <span className="font-mono font-bold text-pink-400">
+                    {user.referralCode}
+                  </span>
+                </div>
+              )}
+            </div>
+            <Link to="/referral">
+              <Button
+                data-ocid="home.referral.primary_button"
+                variant="outline"
+                className="border-pink-400/30 text-pink-400 hover:bg-pink-400/10 shrink-0"
+              >
+                Invite Friends <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </Link>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Rates Quick Info */}
+      <section className="py-10 px-4">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              {
+                icon: <RefreshCw className="w-5 h-5 text-gold" />,
+                label: "Daily Spin",
+                val: "$0.10–$1.00",
+              },
+              {
+                icon: <Zap className="w-5 h-5 text-green-400" />,
+                label: "Task Rewards",
+                val: "Set by admin",
+              },
+              {
+                icon: <Users className="w-5 h-5 text-pink-400" />,
+                label: "Per Referral",
+                val: "$1.00 USDT",
+              },
+              {
+                icon: <Award className="w-5 h-5 text-cyan-400" />,
+                label: "Daily Limit",
+                val: "$500 USDT",
+              },
+            ].map((r) => (
+              <motion.div
+                key={r.label}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="glass-card rounded-2xl p-4 text-center"
+              >
+                <div className="flex justify-center mb-2">{r.icon}</div>
+                <div className="text-xs text-muted-foreground mb-1">
+                  {r.label}
+                </div>
+                <div className="font-bold text-foreground text-sm">{r.val}</div>
+              </motion.div>
+            ))}
           </div>
         </div>
       </section>
@@ -482,7 +891,7 @@ export function Home() {
             <div className="flex flex-wrap gap-4 justify-center">
               <Link to="/signup">
                 <Button
-                  data-ocid="home.primary_button"
+                  data-ocid="home.cta.primary_button"
                   size="lg"
                   className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold text-base px-8"
                 >
@@ -491,7 +900,7 @@ export function Home() {
               </Link>
               <Link to="/plans">
                 <Button
-                  data-ocid="home.secondary_button"
+                  data-ocid="home.cta.secondary_button"
                   size="lg"
                   variant="outline"
                   className="border-gold/40 text-gold hover:bg-gold/10 text-base px-8"
@@ -532,7 +941,7 @@ export function Home() {
             <Link to="/wallet">
               <Button
                 size="sm"
-                data-ocid="home.primary_button"
+                data-ocid="home.wallet.deposit_button"
                 className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold h-7 text-xs px-2"
               >
                 Deposit
@@ -542,7 +951,7 @@ export function Home() {
               <Button
                 size="sm"
                 variant="outline"
-                data-ocid="home.secondary_button"
+                data-ocid="home.wallet.withdraw_button"
                 className="border-gold/30 text-gold hover:bg-gold/10 h-7 text-xs px-2"
               >
                 Withdraw

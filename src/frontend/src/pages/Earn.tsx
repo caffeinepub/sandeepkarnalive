@@ -23,7 +23,14 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 
-const DAILY_LIMIT = 500;
+function getDailyLimit(): number {
+  try {
+    const s = JSON.parse(localStorage.getItem("sce_admin_settings") || "{}");
+    return Number(s.dailyLimit) || 500;
+  } catch {
+    return 500;
+  }
+}
 
 function getTodayDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -89,19 +96,21 @@ export function Earn() {
     setAdminTasks(tasks);
   }, []);
 
+  const DAILY_LIMIT = getDailyLimit();
   const dailyPct = Math.min((dailyEarned / DAILY_LIMIT) * 100, 100);
   const limitReached = dailyEarned >= DAILY_LIMIT;
 
   const addDailyEarning = useCallback(
     (amount: number): boolean => {
+      const limit = getDailyLimit();
       const current = loadLS<number>(dailyEarnKey, 0);
-      if (current >= DAILY_LIMIT) {
+      if (current >= limit) {
         toast.error(
-          `Daily limit of $${DAILY_LIMIT} USDT reached! Come back tomorrow.`,
+          `Daily limit of $${limit} USDT reached! Come back tomorrow.`,
         );
         return false;
       }
-      const capped = Math.min(amount, DAILY_LIMIT - current);
+      const capped = Math.min(amount, limit - current);
       const newTotal = current + capped;
       saveLS(dailyEarnKey, newTotal);
       setDailyEarned(newTotal);
