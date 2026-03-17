@@ -8,11 +8,9 @@ import { useAuth } from "../contexts/AuthContext";
 
 const NAV_LINKS = [
   { to: "/", label: "Home" },
-  { to: "/plans", label: "Plans" },
   { to: "/signals", label: "Signals" },
   { to: "/earn", label: "Earn 💰" },
   { to: "/wallet", label: "Wallet" },
-  { to: "/leaderboard", label: "Leaders" },
   { to: "/news", label: "News" },
   { to: "/vlog", label: "Vlog" },
 ];
@@ -61,7 +59,7 @@ export function Navbar() {
               <Link
                 key={link.to}
                 to={link.to}
-                data-ocid={"nav.link"}
+                data-ocid="nav.link"
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
                   isActive(link.to)
                     ? "bg-gold/10 text-gold border border-gold/30"
@@ -135,6 +133,15 @@ export function Navbar() {
 
           {/* Mobile */}
           <div className="lg:hidden flex items-center gap-2">
+            {isLoggedIn && user && (
+              <Link
+                to="/wallet"
+                data-ocid="nav.wallet.button"
+                className="flex items-center gap-1 h-7 px-2 rounded-full text-xs font-bold text-navy bg-gradient-to-r from-gold to-orange-brand hover:opacity-90 transition-opacity"
+              >
+                <Coins className="w-3 h-3" />${balance}
+              </Link>
+            )}
             <button
               type="button"
               data-ocid="nav.toggle"

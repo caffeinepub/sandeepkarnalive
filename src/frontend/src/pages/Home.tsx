@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
 import {
+  Activity,
   ArrowRight,
   Award,
   BarChart2,
@@ -14,7 +15,9 @@ import {
   Heart,
   Play,
   RefreshCw,
+  Rocket,
   Star,
+  TrendingDown,
   TrendingUp,
   Users,
   Video,
@@ -104,6 +107,132 @@ const EARN_CATEGORIES = [
     color: "from-gold/10 to-orange-brand/5",
   },
 ];
+
+type CryptoPrice = {
+  usd: number;
+  usd_24h_change: number;
+};
+
+const COIN_IDS = [
+  { binanceSymbol: "BTCUSDT", symbol: "BTC", color: "text-orange-400" },
+  { binanceSymbol: "ETHUSDT", symbol: "ETH", color: "text-blue-400" },
+  { binanceSymbol: "SOLUSDT", symbol: "SOL", color: "text-purple-400" },
+  { binanceSymbol: "BNBUSDT", symbol: "BNB", color: "text-yellow-400" },
+];
+
+function CryptoTicker() {
+  const [prices, setPrices] = useState<Record<string, CryptoPrice>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchPrices() {
+      try {
+        const symbols = JSON.stringify(COIN_IDS.map((c) => c.binanceSymbol));
+        const res = await fetch(
+          `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(symbols)}`,
+        );
+        const data = await res.json();
+        const mapped: Record<string, CryptoPrice> = {};
+        if (Array.isArray(data)) {
+          for (const ticker of data) {
+            mapped[ticker.symbol] = {
+              usd: Number.parseFloat(ticker.lastPrice),
+              usd_24h_change: Number.parseFloat(ticker.priceChangePercent),
+            };
+          }
+        }
+        setPrices(mapped);
+        setLoading(false);
+      } catch {
+        setLoading(false);
+      }
+    }
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div
+      className="flex items-center gap-4 overflow-x-auto scrollbar-hide py-1"
+      data-ocid="home.crypto.section"
+    >
+      {loading
+        ? Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={String(i)}
+              className="flex items-center gap-2 bg-background/30 rounded-xl px-3 py-2 border border-border/30 shrink-0 animate-pulse"
+            >
+              <div className="w-8 h-4 bg-border/40 rounded" />
+              <div className="w-16 h-4 bg-border/40 rounded" />
+            </div>
+          ))
+        : COIN_IDS.map((coin) => {
+            const price = prices[coin.binanceSymbol];
+            const change = price?.usd_24h_change ?? 0;
+            const isUp = change >= 0;
+            return (
+              <div
+                key={coin.binanceSymbol}
+                className="flex items-center gap-2 bg-background/30 rounded-xl px-3 py-2 border border-border/30 shrink-0"
+              >
+                <span className={`font-bold text-xs ${coin.color}`}>
+                  {coin.symbol}
+                </span>
+                {price ? (
+                  <>
+                    <span className="text-xs font-mono text-foreground">
+                      $
+                      {price.usd.toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                    <span
+                      className={`text-xs font-medium flex items-center gap-0.5 ${isUp ? "text-green-400" : "text-red-400"}`}
+                    >
+                      {isUp ? (
+                        <TrendingUp className="w-3 h-3" />
+                      ) : (
+                        <TrendingDown className="w-3 h-3" />
+                      )}
+                      {Math.abs(change).toFixed(2)}%
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </div>
+            );
+          })}
+      <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0 ml-auto">
+        <Activity className="w-3 h-3" /> Live
+      </div>
+    </div>
+  );
+}
+
+function TradingHub() {
+  return (
+    <section className="pt-28 pb-4 px-4" data-ocid="home.trading.section">
+      <div className="max-w-5xl mx-auto space-y-4">
+        {/* Live Crypto Prices */}
+        <div className="glass-card rounded-2xl p-4 border border-border/40">
+          <div className="flex items-center gap-2 mb-3">
+            <Activity className="w-4 h-4 text-green-400" />
+            <span className="text-sm font-bold text-foreground">
+              Live Crypto Prices
+            </span>
+            <span className="text-xs text-green-400 font-medium ml-auto animate-pulse">
+              ● LIVE
+            </span>
+          </div>
+          <CryptoTicker />
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function CategorySection({
   cat,
@@ -275,9 +404,12 @@ export function Home() {
         </div>
       </div>
 
-      {/* Ads / Promotions - TOP */}
+      {/* Trading Hub - TOP */}
+      <TradingHub />
+
+      {/* Ads / Promotions */}
       {ads.length > 0 && (
-        <section className="pt-28 pb-6 px-4">
+        <section className="pt-4 pb-6 px-4">
           <div className="max-w-5xl mx-auto">
             <div className="flex items-center gap-2 mb-4">
               <h2 className="font-display text-xl font-bold text-foreground">
@@ -337,9 +469,7 @@ export function Home() {
       )}
 
       {/* Hero */}
-      <section
-        className={`${ads.length > 0 ? "pt-6" : "pt-32"} pb-20 px-4 relative overflow-hidden`}
-      >
+      <section className="pt-6 pb-20 px-4 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-20 left-1/4 w-96 h-96 bg-gold/5 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-orange-brand/5 rounded-full blur-3xl" />
@@ -624,165 +754,6 @@ export function Home() {
         </div>
       </section>
 
-      {/* Investment Income Section */}
-      <section className="py-16 px-4" data-ocid="home.investment.section">
-        <div className="max-w-5xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-10"
-          >
-            <Badge className="bg-green-500/10 text-green-400 border-green-500/20 mb-4">
-              💰 Investment Income
-            </Badge>
-            <h2 className="font-display text-3xl md:text-4xl font-bold text-foreground mb-3">
-              Invest & Earn <span className="gold-gradient">Daily Income</span>
-            </h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
-              Deposit USDT once and earn guaranteed daily profits. Admin manages
-              all payouts. Withdraw anytime after minimum hold period.
-            </p>
-          </motion.div>
-
-          {/* Plan highlights */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-            {[
-              {
-                name: "Starter",
-                deposit: "$100",
-                daily: "$5/day",
-                monthly: "$150",
-                color: "from-slate-400/20 to-slate-600/10",
-                border: "border-slate-400/20",
-                badge: "bg-slate-400/20 text-slate-300",
-              },
-              {
-                name: "Gold ⭐",
-                deposit: "$5,000",
-                daily: "$400/day",
-                monthly: "$12,000",
-                color: "from-gold/20 to-orange-brand/10",
-                border: "border-gold/30",
-                badge: "bg-gold/20 text-gold",
-                popular: true,
-              },
-              {
-                name: "Diamond",
-                deposit: "$50,000",
-                daily: "$5,000/day",
-                monthly: "$150,000",
-                color: "from-cyan-400/20 to-cyan-600/10",
-                border: "border-cyan-400/20",
-                badge: "bg-cyan-400/20 text-cyan-300",
-              },
-            ].map((plan, i) => (
-              <motion.div
-                key={plan.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.08 }}
-                data-ocid={`home.investment.item.${i + 1}`}
-                className={`glass-card rounded-2xl p-5 border ${plan.border} bg-gradient-to-br ${plan.color} relative`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold text-xs px-3">
-                      🏆 Most Popular
-                    </Badge>
-                  </div>
-                )}
-                <div className="flex items-center justify-between mb-4">
-                  <span className="font-display font-bold text-foreground text-lg">
-                    {plan.name}
-                  </span>
-                  <Badge className={`${plan.badge} border text-xs`}>Plan</Badge>
-                </div>
-                <div className="text-center py-3 bg-background/30 rounded-xl mb-4">
-                  <div className="text-3xl font-display font-bold text-gold">
-                    {plan.daily}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Daily earnings
-                  </div>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Min Deposit</span>
-                    <span className="font-bold text-foreground">
-                      {plan.deposit}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">
-                      Monthly Return
-                    </span>
-                    <span className="font-bold text-green-400">
-                      {plan.monthly}
-                    </span>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Features */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-            {[
-              { icon: "🔒", label: "Secure Deposits", sub: "Admin verified" },
-              { icon: "📅", label: "Daily Payouts", sub: "Every 24 hours" },
-              { icon: "💳", label: "Easy Withdraw", sub: "Min $10 USDT" },
-              {
-                icon: "📈",
-                label: "Up to 10% Daily",
-                sub: "Guaranteed returns",
-              },
-            ].map((f) => (
-              <div
-                key={f.label}
-                className="glass-card rounded-xl p-3 text-center"
-              >
-                <div className="text-2xl mb-1">{f.icon}</div>
-                <div className="text-xs font-bold text-foreground">
-                  {f.label}
-                </div>
-                <div className="text-xs text-muted-foreground">{f.sub}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* CTA */}
-          <div className="text-center">
-            <p className="text-muted-foreground text-sm mb-4">
-              Thousands of investors already earning daily. Join now and start
-              your passive income journey.
-            </p>
-            <div className="flex flex-wrap gap-3 justify-center">
-              <Link to="/wallet">
-                <Button
-                  data-ocid="home.investment.deposit_button"
-                  size="lg"
-                  className="bg-gradient-to-r from-green-500 to-green-600 text-white font-bold px-8 hover:opacity-90 shadow-[0_0_20px_rgba(34,197,94,0.3)]"
-                >
-                  💰 Deposit & Invest Now
-                </Button>
-              </Link>
-              <Link to="/plans">
-                <Button
-                  data-ocid="home.investment.plans_button"
-                  size="lg"
-                  variant="outline"
-                  className="border-gold/40 text-gold hover:bg-gold/10 px-8"
-                >
-                  View All Plans
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Referral Quick Section */}
       <section className="py-10 px-4 bg-background/20">
         <div className="max-w-5xl mx-auto">
@@ -886,7 +857,7 @@ export function Home() {
             </h2>
             <p className="text-muted-foreground mb-8 text-lg">
               Join 2,400+ traders already making daily profits. Register free
-              and choose your plan.
+              and start trading crypto today.
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
               <Link to="/signup">
@@ -898,14 +869,14 @@ export function Home() {
                   Register Free <ArrowRight className="w-5 h-5 ml-2" />
                 </Button>
               </Link>
-              <Link to="/plans">
+              <Link to="/earn">
                 <Button
                   data-ocid="home.cta.secondary_button"
                   size="lg"
                   variant="outline"
                   className="border-gold/40 text-gold hover:bg-gold/10 text-base px-8"
                 >
-                  View Plans
+                  Start Trading
                 </Button>
               </Link>
             </div>
@@ -927,39 +898,6 @@ export function Home() {
           </a>
         </p>
       </footer>
-
-      {/* Floating wallet widget */}
-      <div className="fixed bottom-6 right-4 z-50">
-        <div className="glass-card rounded-2xl p-3 shadow-lg border border-gold/20 min-w-[160px]">
-          <div className="text-xs text-muted-foreground mb-1 font-medium">
-            Your Balance
-          </div>
-          <div className="text-base font-bold text-gold mb-2">
-            ${(user?.balance || 0).toFixed(2)} USDT
-          </div>
-          <div className="flex gap-1.5">
-            <Link to="/wallet">
-              <Button
-                size="sm"
-                data-ocid="home.wallet.deposit_button"
-                className="bg-gradient-to-r from-gold to-orange-brand text-navy font-bold h-7 text-xs px-2"
-              >
-                Deposit
-              </Button>
-            </Link>
-            <Link to="/wallet">
-              <Button
-                size="sm"
-                variant="outline"
-                data-ocid="home.wallet.withdraw_button"
-                className="border-gold/30 text-gold hover:bg-gold/10 h-7 text-xs px-2"
-              >
-                Withdraw
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

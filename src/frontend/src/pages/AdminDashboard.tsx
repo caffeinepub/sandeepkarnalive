@@ -252,8 +252,29 @@ export function AdminDashboard() {
     reward: "0",
   });
 
-  const users = getSCEUsers();
-  const { deposits, withdrawals } = getPendingTx();
+  const [users, setUsers] = useState<any[]>(() => getSCEUsers());
+  const [deposits, setDeposits] = useState<any[]>(
+    () => getPendingTx().deposits,
+  );
+  const [withdrawals, setWithdrawals] = useState<any[]>(
+    () => getPendingTx().withdrawals,
+  );
+
+  // Auto-refresh users, deposits, withdrawals every 3 seconds and on focus
+  useEffect(() => {
+    function refresh() {
+      setUsers(getSCEUsers());
+      const { deposits: d, withdrawals: w } = getPendingTx();
+      setDeposits(d);
+      setWithdrawals(w);
+    }
+    const interval = setInterval(refresh, 3000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
 
   // Forms
   const [vlogForm, setVlogForm] = useState({
@@ -625,7 +646,7 @@ export function AdminDashboard() {
                   )}
                   <div className="space-y-1">
                     <Label className="text-xs text-foreground/70">
-                      Video URL *
+                      Video (URL or File Upload)
                     </Label>
                     <Input
                       type="text"
@@ -639,6 +660,16 @@ export function AdminDashboard() {
                     <p className="text-xs text-muted-foreground">
                       YouTube, Google Drive, or any direct video URL
                     </p>
+                    <p className="text-xs text-muted-foreground font-medium mt-1">
+                      — OR upload video/image file —
+                    </p>
+                    <input
+                      type="file"
+                      accept="video/*,image/*"
+                      data-ocid="admin.upload_button"
+                      onChange={(e) => handleVlogFileUpload(e, "videoUrl")}
+                      className="w-full text-xs text-muted-foreground bg-background/50 border border-border/60 rounded-lg p-2 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gold/20 file:text-gold file:text-xs"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs text-foreground/70">

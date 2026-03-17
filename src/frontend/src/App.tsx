@@ -15,9 +15,11 @@ import { Admin } from "./pages/Admin";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { Crypto } from "./pages/Crypto";
 import { Earn } from "./pages/Earn";
+import { FutureTrading } from "./pages/FutureTrading";
 import { Home } from "./pages/Home";
 import { Leaderboard } from "./pages/Leaderboard";
 import { Login } from "./pages/Login";
+import { MemeCoinTrading } from "./pages/MemeCoinTrading";
 import { News } from "./pages/News";
 import { Plans } from "./pages/Plans";
 import { Profile } from "./pages/Profile";
@@ -50,6 +52,16 @@ const routes = [
     getParentRoute: () => rootRoute,
     path: "/plans",
     component: Plans,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/meme-trading",
+    component: MemeCoinTrading,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/futures",
+    component: FutureTrading,
   }),
   createRoute({
     getParentRoute: () => rootRoute,
