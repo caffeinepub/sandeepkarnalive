@@ -21,6 +21,7 @@ import { motion } from "motion/react";
 import React from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useActor } from "../hooks/useActor";
 
 type Signal = {
   id: number;
@@ -210,6 +211,7 @@ function AdminSettings() {
 export function AdminDashboard() {
   useAdminCheck();
   const navigate = useNavigate();
+  const { actor } = useActor();
 
   const [vlogs, setVlogs] = useState<Vlog[]>(() =>
     loadLS("sce_admin_vlogs", []),
@@ -260,6 +262,40 @@ export function AdminDashboard() {
     () => getPendingTx().withdrawals,
   );
 
+  const [canisterUsers, setCanisterUsers] = React.useState<any[]>([]);
+  const [setBalanceForm, setSetBalanceForm] = React.useState<{
+    username: string;
+    value: string;
+  }>({ username: "", value: "" });
+
+  // Merge localStorage + canister users (canister takes priority, dedup by username)
+  const allUsers = React.useMemo(() => {
+    const localUsers = users.map((u: any) => ({ ...u, _source: "local" }));
+    const canisterMapped = canisterUsers.map((u: any) => ({
+      username: u.username,
+      email: u.email,
+      fullName: u.fullName,
+      balance: Number(u.balance) / 1_000_000,
+      totalEarned: Number(u.totalEarned) / 1_000_000,
+      totalDeposited: Number(u.totalDeposited) / 1_000_000,
+      referralCode: u.referralCode,
+      joinDate: new Date(Number(u.joinDate) / 1_000_000).toISOString(),
+      activePlan: null,
+      referredBy:
+        u.referredBy && u.referredBy.length > 0 ? u.referredBy[0] : null,
+      principalId: u.principalId,
+      _source: "canister",
+    }));
+    const merged: any[] = [...canisterMapped];
+    for (const lu of localUsers) {
+      const exists = merged.find(
+        (m) => m.username.toLowerCase() === lu.username.toLowerCase(),
+      );
+      if (!exists) merged.push(lu);
+    }
+    return merged;
+  }, [users, canisterUsers]);
+
   // Auto-refresh users, deposits, withdrawals every 3 seconds and on focus
   useEffect(() => {
     function refresh() {
@@ -275,6 +311,22 @@ export function AdminDashboard() {
       window.removeEventListener("focus", refresh);
     };
   }, []);
+
+  // Fetch canister users periodically
+  useEffect(() => {
+    async function fetchCanisterUsers() {
+      if (!actor) return;
+      try {
+        const result = await (actor as any).getAllUsers();
+        if (Array.isArray(result)) setCanisterUsers(result);
+      } catch {
+        // silent fail
+      }
+    }
+    fetchCanisterUsers();
+    const interval = setInterval(fetchCanisterUsers, 5000);
+    return () => clearInterval(interval);
+  }, [actor]);
 
   // Forms
   const [vlogForm, setVlogForm] = useState({
@@ -478,7 +530,7 @@ export function AdminDashboard() {
   }
 
   const stats = [
-    { label: "Total Users", value: users.length, icon: Users },
+    { label: "Total Users", value: allUsers.length, icon: Users },
     { label: "Pending Deposits", value: deposits.length, icon: BarChart2 },
     {
       label: "Pending Withdrawals",
@@ -613,7 +665,7 @@ export function AdminDashboard() {
                 </h3>
                 <div className="space-y-3">
                   {[
-                    { label: "Total Users", value: users.length },
+                    { label: "Total Users", value: allUsers.length },
                     { label: "Total Vlogs", value: vlogs.length },
                     { label: "Total Ads", value: ads.length },
                     { label: "Active Signals", value: signals.length },
@@ -2015,12 +2067,20 @@ export function AdminDashboard() {
               className="glass-card rounded-2xl overflow-hidden"
               data-ocid="admin.table"
             >
-              <div className="p-5 border-b border-border/30">
+              <div className="p-5 border-b border-border/30 flex items-center justify-between gap-3">
                 <h3 className="font-display font-bold text-foreground">
-                  All Users ({users.length})
+                  All Users ({allUsers.length})
                 </h3>
+                <div className="flex gap-2 text-xs">
+                  <span className="px-2 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
+                    ● Canister: {canisterUsers.length}
+                  </span>
+                  <span className="px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                    ● Local: {users.length}
+                  </span>
+                </div>
               </div>
-              {users.length === 0 ? (
+              {allUsers.length === 0 ? (
                 <div
                   data-ocid="admin.empty_state"
                   className="text-center py-12 text-muted-foreground"
@@ -2032,20 +2092,28 @@ export function AdminDashboard() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border/30">
-                        {["Username", "Email", "Balance", "Plan", "Joined"].map(
-                          (h) => (
-                            <th
-                              key={h}
-                              className="text-left text-xs font-medium text-muted-foreground px-4 py-3 uppercase tracking-wider"
-                            >
-                              {h}
-                            </th>
-                          ),
-                        )}
+                        {[
+                          "Source",
+                          "Full Name",
+                          "Username",
+                          "Email",
+                          "Balance",
+                          "Total Earned",
+                          "Referral",
+                          "Joined",
+                          "Actions",
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            className="text-left text-xs font-medium text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap"
+                          >
+                            {h}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {users.map((u: any, i: number) => (
+                      {allUsers.map((u: any, i: number) => (
                         <motion.tr
                           key={u.username + String(i)}
                           initial={{ opacity: 0 }}
@@ -2054,6 +2122,17 @@ export function AdminDashboard() {
                           data-ocid="admin.row"
                           className="border-b border-border/20 hover:bg-gold/5 transition-colors"
                         >
+                          <td className="px-4 py-3">
+                            <Badge
+                              variant="outline"
+                              className={`text-xs ${u._source === "canister" ? "border-green-500/40 text-green-400" : "border-yellow-500/40 text-yellow-400"}`}
+                            >
+                              {u._source === "canister" ? "Canister" : "Local"}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            {u.fullName || "-"}
+                          </td>
                           <td className="px-4 py-3 font-medium text-foreground">
                             {u.username}
                           </td>
@@ -2063,16 +2142,114 @@ export function AdminDashboard() {
                           <td className="px-4 py-3 font-mono text-green-400">
                             ${(u.balance || 0).toFixed(2)}
                           </td>
-                          <td className="px-4 py-3">
-                            <Badge
-                              variant="outline"
-                              className="text-xs border-gold/30 text-gold"
-                            >
-                              {u.activePlan || "None"}
-                            </Badge>
+                          <td className="px-4 py-3 font-mono text-blue-400">
+                            ${(u.totalEarned || 0).toFixed(2)}
                           </td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">
-                            {new Date(u.joinDate).toLocaleDateString()}
+                          <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                            {u.referralCode || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                            {u.joinDate
+                              ? new Date(u.joinDate).toLocaleDateString()
+                              : "-"}
+                          </td>
+                          <td className="px-4 py-3">
+                            {u._source === "canister" && u.principalId ? (
+                              <div className="flex items-center gap-2">
+                                {setBalanceForm.username === u.username ? (
+                                  <>
+                                    <Input
+                                      type="number"
+                                      className="w-20 h-7 text-xs"
+                                      placeholder="USDT"
+                                      value={setBalanceForm.value}
+                                      onChange={(e) =>
+                                        setSetBalanceForm((f) => ({
+                                          ...f,
+                                          value: e.target.value,
+                                        }))
+                                      }
+                                      data-ocid="admin.input"
+                                    />
+                                    <Button
+                                      size="sm"
+                                      className="h-7 text-xs bg-green-600 hover:bg-green-700"
+                                      data-ocid="admin.save_button"
+                                      onClick={async () => {
+                                        if (!actor) return;
+                                        try {
+                                          const balanceUsdt =
+                                            Number.parseFloat(
+                                              setBalanceForm.value,
+                                            ) || 0;
+                                          const balanceMicro = BigInt(
+                                            Math.round(balanceUsdt * 1_000_000),
+                                          );
+                                          await (
+                                            actor as any
+                                          ).adminUpdateUserBalance(
+                                            u.principalId,
+                                            balanceMicro,
+                                          );
+                                          toast.success(
+                                            `Balance updated for ${u.username}`,
+                                          );
+                                          setSetBalanceForm({
+                                            username: "",
+                                            value: "",
+                                          });
+                                          // Refresh canister users
+                                          const result = await (
+                                            actor as any
+                                          ).getAllUsers();
+                                          if (Array.isArray(result))
+                                            setCanisterUsers(result);
+                                        } catch {
+                                          toast.error(
+                                            "Failed to update balance",
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      Set
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs"
+                                      onClick={() =>
+                                        setSetBalanceForm({
+                                          username: "",
+                                          value: "",
+                                        })
+                                      }
+                                      data-ocid="admin.cancel_button"
+                                    >
+                                      ✕
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs border-gold/30 text-gold hover:bg-gold/10"
+                                    data-ocid="admin.edit_button"
+                                    onClick={() =>
+                                      setSetBalanceForm({
+                                        username: u.username,
+                                        value: String(u.balance || 0),
+                                      })
+                                    }
+                                  >
+                                    Set Balance
+                                  </Button>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                —
+                              </span>
+                            )}
                           </td>
                         </motion.tr>
                       ))}

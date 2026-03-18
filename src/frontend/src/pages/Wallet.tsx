@@ -23,15 +23,18 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Coins,
   Copy,
   Hash,
   Loader2,
   Network,
   Shield,
+  TrendingDown,
+  TrendingUp,
   Wallet as WalletIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { useActor } from "../hooks/useActor";
@@ -41,9 +44,7 @@ const ADDRESSES = [
     currency: "USDT (TRC20)",
     symbol: "USDT",
     address: "THS4eZw4H6Xqdhnkdt3Up52ZSHQTKg6zRH",
-    color: "text-green-400",
-    borderColor: "border-green-500/30",
-    bg: "from-green-500/10 to-teal-500/5",
+    color: "#00FF88",
     network: "Tron Network",
     icon: "🟢",
   },
@@ -51,9 +52,7 @@ const ADDRESSES = [
     currency: "Ethereum (ETH)",
     symbol: "ETH",
     address: "0x95807b190b65c6b6d907527ff9fd4ef657099719",
-    color: "text-blue-400",
-    borderColor: "border-blue-500/30",
-    bg: "from-blue-500/10 to-indigo-500/5",
+    color: "#00F0FF",
     network: "Ethereum Network (ERC-20)",
     icon: "🔵",
   },
@@ -61,9 +60,7 @@ const ADDRESSES = [
     currency: "Bitcoin (BTC)",
     symbol: "BTC",
     address: "1EHAG2Ftyae1fUQ9UP5PXp5tjq3Z3MFk9D",
-    color: "text-orange-400",
-    borderColor: "border-orange-500/30",
-    bg: "from-orange-500/10 to-amber-500/5",
+    color: "#FFD700",
     network: "Bitcoin Network",
     icon: "🟠",
   },
@@ -71,9 +68,7 @@ const ADDRESSES = [
     currency: "Solana (SOL)",
     symbol: "SOL",
     address: "87DuKMNo23BNHeH5t1y9gDzmofqAksVpoybqQrZ4QjMz",
-    color: "text-purple-400",
-    borderColor: "border-purple-500/30",
-    bg: "from-purple-500/10 to-pink-500/5",
+    color: "#A855F7",
     network: "Solana Network",
     icon: "🟣",
   },
@@ -85,6 +80,14 @@ const CURRENCY_NETWORK: Record<string, string> = {
   BTC: "Bitcoin Network",
   SOL: "Solana Network",
 };
+
+const COIN_LIST = [
+  { symbol: "BTC", name: "Bitcoin", binance: "BTCUSDT", color: "#FFD700" },
+  { symbol: "ETH", name: "Ethereum", binance: "ETHUSDT", color: "#00F0FF" },
+  { symbol: "USDT", name: "Tether", binance: null, color: "#00FF88" },
+  { symbol: "SOL", name: "Solana", binance: "SOLUSDT", color: "#A855F7" },
+  { symbol: "BNB", name: "BNB", binance: "BNBUSDT", color: "#FFD700" },
+];
 
 function generateOrderId() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -114,9 +117,12 @@ function CopyButton({
         size === "sm" ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm"
       } ${
         copied
-          ? "bg-green-500/20 text-green-400 border border-green-500/30"
-          : "bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20"
+          ? "text-[#00FF88] border border-[#00FF88]/30"
+          : "text-[#FFD700] border border-[#FFD700]/30 hover:bg-[#FFD700]/10"
       }`}
+      style={{
+        background: copied ? "rgba(0,255,136,0.1)" : "rgba(255,215,0,0.08)",
+      }}
     >
       {copied ? (
         <>
@@ -128,6 +134,36 @@ function CopyButton({
         </>
       )}
     </button>
+  );
+}
+
+function AnimatedBalance({ value }: { value: number }) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    const end = value;
+    if (end === 0) {
+      setDisplay(0);
+      return;
+    }
+    const duration = 1200;
+    const startTime = performance.now();
+    function update(now: number) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - (1 - progress) ** 3;
+      setDisplay(eased * end);
+      if (progress < 1) requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+  }, [value]);
+  return (
+    <span
+      className="font-display font-bold text-5xl tracking-tight"
+      style={{ color: "#FFD700" }}
+    >
+      ${display.toFixed(2)}
+    </span>
   );
 }
 
@@ -169,8 +205,50 @@ export function Wallet() {
     useState<DepositConfirmation | null>(null);
   const [withdrawConfirm, setWithdrawConfirm] =
     useState<WithdrawConfirmation | null>(null);
+  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
+  const [, setPrevPrices] = useState<Record<string, number>>({});
+  const [flashMap, setFlashMap] = useState<Record<string, "up" | "down">>({});
 
   const balance = user?.balance || 0;
+
+  // Live prices
+  useEffect(() => {
+    async function fetchPrices() {
+      try {
+        const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
+        const symbolsParam = JSON.stringify(symbols);
+        const res = await fetch(
+          `https://api.binance.com/api/v3/ticker/price?symbols=${encodeURIComponent(symbolsParam)}`,
+        );
+        const data = await res.json();
+        if (!Array.isArray(data)) return;
+        const newPrices: Record<string, number> = {};
+        for (const item of data) {
+          const sym = (item.symbol as string).replace("USDT", "");
+          newPrices[sym] = Number.parseFloat(item.price);
+        }
+        newPrices.USDT = 1.0;
+        setPrevPrices((prev) => {
+          const flashes: Record<string, "up" | "down"> = {};
+          for (const k of Object.keys(newPrices)) {
+            if (prev[k] && prev[k] !== newPrices[k])
+              flashes[k] = newPrices[k] > prev[k] ? "up" : "down";
+          }
+          if (Object.keys(flashes).length > 0) {
+            setFlashMap(flashes);
+            setTimeout(() => setFlashMap({}), 600);
+          }
+          return { ...newPrices };
+        });
+        setLivePrices(newPrices);
+      } catch {
+        /* ignore */
+      }
+    }
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   const selectedAddress = ADDRESSES.find(
     (a) => a.symbol === depositForm.currency,
@@ -301,747 +379,725 @@ export function Wallet() {
     withdrawAmt >= 10 &&
     withdrawAmt <= balance;
 
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-mesh pt-20 flex items-center justify-center px-4">
+        <div className="glass-card rounded-2xl p-10 text-center max-w-sm w-full">
+          <WalletIcon className="w-16 h-16 mx-auto mb-4 text-white/20" />
+          <h2 className="font-display text-2xl font-bold text-white mb-2">
+            Wallet Access
+          </h2>
+          <p className="text-white/40 mb-6">
+            Please login to access your wallet.
+          </p>
+          <a href="/login">
+            <button
+              type="button"
+              className="w-full h-11 rounded-lg font-bold text-sm glow-btn-yellow"
+            >
+              Login to Continue
+            </button>
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-mesh pt-20 pb-16">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
+        {/* Big Balance Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="rounded-2xl p-8 mb-6 relative overflow-hidden"
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            backdropFilter: "blur(20px)",
+            border: "1px solid rgba(255,215,0,0.25)",
+            boxShadow:
+              "0 0 40px rgba(255,215,0,0.1), 0 20px 60px rgba(0,0,0,0.4)",
+          }}
         >
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold/30 to-orange-brand/20 border border-gold/30 flex items-center justify-center">
-              <WalletIcon className="w-5 h-5 text-gold" />
-            </div>
-            <h1 className="font-display text-4xl font-bold gold-gradient">
-              Wallet
-            </h1>
-          </div>
-          <p className="text-muted-foreground pl-[52px]">
-            Deposit, withdraw and track your transactions
-          </p>
-        </motion.div>
+          {/* BG decoration */}
+          <div
+            className="absolute top-0 right-0 w-64 h-64 rounded-full pointer-events-none"
+            style={{
+              background:
+                "radial-gradient(circle, rgba(255,215,0,0.06) 0%, transparent 70%)",
+              filter: "blur(30px)",
+            }}
+          />
 
-        {/* Balance Card */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.97 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.05 }}
-          className="relative glass-card rounded-3xl p-6 mb-8 overflow-hidden"
-          data-ocid="wallet.card"
-        >
-          {/* Glow effect */}
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-0 left-1/4 w-64 h-32 bg-gold/10 rounded-full blur-3xl" />
-            <div className="absolute bottom-0 right-1/4 w-64 h-32 bg-orange-brand/8 rounded-full blur-3xl" />
-          </div>
-          <div className="relative flex items-center justify-between">
-            <div>
-              <div className="text-sm text-muted-foreground mb-1 font-medium tracking-wide uppercase">
-                Available Balance
-              </div>
-              <div className="font-display text-5xl font-bold text-gold mb-1">
-                ${balance.toFixed(2)}
-              </div>
-              <div className="text-sm text-muted-foreground font-medium">
-                USDT • Sandeep Karn Crypto Empire
-              </div>
+          <div className="relative z-10">
+            <div className="flex items-center gap-2 mb-2">
+              <WalletIcon className="w-4 h-4 text-white/40" />
+              <span className="text-xs font-medium text-white/40 uppercase tracking-widest">
+                Total Balance
+              </span>
             </div>
-            <div className="text-right hidden sm:block">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gold/20 to-orange-brand/10 border border-gold/20 flex items-center justify-center">
-                <WalletIcon className="w-8 h-8 text-gold/60" />
-              </div>
-            </div>
-          </div>
-        </motion.div>
+            <AnimatedBalance value={balance} />
+            <span className="text-white/40 text-sm ml-1">USDT</span>
 
-        <Tabs defaultValue="deposit" data-ocid="wallet.tab">
-          <TabsList className="bg-background/50 border border-border/50 w-full mb-6 p-1 rounded-xl">
-            <TabsTrigger
-              value="deposit"
-              data-ocid="wallet.tab"
-              className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-gold data-[state=active]:to-orange-brand data-[state=active]:text-navy font-semibold rounded-lg"
-            >
-              <ArrowDownLeft className="w-4 h-4 mr-2" /> Deposit
-            </TabsTrigger>
-            <TabsTrigger
-              value="withdraw"
-              data-ocid="wallet.tab"
-              className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-gold data-[state=active]:to-orange-brand data-[state=active]:text-navy font-semibold rounded-lg"
-            >
-              <ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw
-            </TabsTrigger>
-            <TabsTrigger
-              value="history"
-              data-ocid="wallet.tab"
-              className="flex-1 data-[state=active]:bg-gradient-to-r data-[state=active]:from-gold data-[state=active]:to-orange-brand data-[state=active]:text-navy font-semibold rounded-lg"
-            >
-              History
-            </TabsTrigger>
-          </TabsList>
-
-          {/* ─── DEPOSIT TAB ─── */}
-          <TabsContent value="deposit">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key="deposit"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
+            <div className="flex flex-wrap gap-3 mt-6">
+              {/* 3D Deposit button */}
+              <button
+                type="button"
+                onClick={() => document.getElementById("deposit-tab")?.click()}
+                data-ocid="wallet.deposit.primary_button"
+                className="btn-3d-yellow flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm"
               >
-                {/* Step 1 – Select currency */}
-                <div className="glass-card rounded-2xl p-6">
-                  <div className="flex items-center gap-2 mb-5">
-                    <div className="w-7 h-7 rounded-full bg-gold text-navy text-xs font-bold flex items-center justify-center">
-                      1
-                    </div>
-                    <h3 className="font-display font-bold text-lg text-foreground">
-                      Select Currency & Amount
-                    </h3>
+                <ArrowDownLeft className="w-4 h-4" /> Deposit
+              </button>
+              {/* 3D Withdraw button */}
+              <button
+                type="button"
+                onClick={() => document.getElementById("withdraw-tab")?.click()}
+                data-ocid="wallet.withdraw.primary_button"
+                className="btn-3d-blue flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm"
+              >
+                <ArrowUpRight className="w-4 h-4" /> Withdraw
+              </button>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Coin list with live prices */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="rounded-2xl mb-6"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <div
+            className="px-5 py-4 border-b"
+            style={{ borderColor: "rgba(255,255,255,0.05)" }}
+          >
+            <h3 className="font-display font-bold text-white text-sm">
+              Market Prices
+            </h3>
+          </div>
+          {COIN_LIST.map((coin) => {
+            const price = livePrices[coin.symbol];
+            const flash = flashMap[coin.symbol];
+            return (
+              <div
+                key={coin.symbol}
+                className={`flex items-center justify-between px-5 py-3 border-b last:border-0 transition-all rounded-sm ${
+                  flash === "up"
+                    ? "price-flash-green"
+                    : flash === "down"
+                      ? "price-flash-red"
+                      : ""
+                }`}
+                style={{ borderColor: "rgba(255,255,255,0.04)" }}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                    style={{ background: `${coin.color}15`, color: coin.color }}
+                  >
+                    {coin.symbol[0]}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label className="text-sm text-foreground/80">
-                        Currency
-                      </Label>
-                      <Select
-                        value={depositForm.currency}
-                        onValueChange={(v) =>
-                          setDepositForm({ ...depositForm, currency: v })
-                        }
-                      >
-                        <SelectTrigger
-                          data-ocid="wallet.select"
-                          className="bg-background/50 border-border/60 h-11"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ADDRESSES.map((a) => (
-                            <SelectItem key={a.symbol} value={a.symbol}>
-                              {a.icon} {a.symbol} — {a.network}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-sm text-foreground/80">
-                        Amount (USD)
-                      </Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        placeholder="e.g. 100"
-                        data-ocid="wallet.input"
-                        value={depositForm.amount}
-                        onChange={(e) =>
-                          setDepositForm({
-                            ...depositForm,
-                            amount: e.target.value,
-                          })
-                        }
-                        className="bg-background/50 border-border/60 focus:border-gold/50 h-11"
-                      />
-                    </div>
+                  <div>
+                    <span className="text-sm font-bold text-white">
+                      {coin.symbol}
+                    </span>
+                    <span className="text-xs text-white/30 ml-2">
+                      {coin.name}
+                    </span>
                   </div>
                 </div>
-
-                {/* Step 2 – Send to address */}
-                {selectedAddress && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`glass-card rounded-2xl p-6 border bg-gradient-to-br ${selectedAddress.bg} ${selectedAddress.borderColor}`}
-                  >
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="w-7 h-7 rounded-full bg-gold text-navy text-xs font-bold flex items-center justify-center">
-                        2
+                <div className="text-right">
+                  {price ? (
+                    <>
+                      <div className="font-mono text-sm font-bold text-white">
+                        $
+                        {price.toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </div>
-                      <h3 className="font-display font-bold text-lg text-foreground">
-                        Send to This Address
-                      </h3>
-                    </div>
-                    <div className="mb-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Network className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
+                      <div className="text-[10px] text-white/30 flex items-center justify-end gap-0.5">
+                        {flash === "up" ? (
+                          <TrendingUp
+                            className="w-3 h-3"
+                            style={{ color: "#00FF88" }}
+                          />
+                        ) : flash === "down" ? (
+                          <TrendingDown
+                            className="w-3 h-3"
+                            style={{ color: "#FF3366" }}
+                          />
+                        ) : null}
+                        Live
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-xs text-white/20">Loading...</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </motion.div>
+
+        {/* Deposit / Withdraw Tabs */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="rounded-2xl overflow-hidden mb-6"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,215,0,0.1)",
+          }}
+        >
+          <Tabs defaultValue="deposit">
+            <TabsList
+              className="w-full rounded-none bg-transparent border-b"
+              style={{ borderColor: "rgba(255,215,0,0.1)" }}
+            >
+              <TabsTrigger
+                id="deposit-tab"
+                value="deposit"
+                data-ocid="wallet.deposit.tab"
+                className="flex-1 h-12 font-bold data-[state=active]:text-[#FFD700] data-[state=active]:border-b-2 data-[state=active]:border-[#FFD700] rounded-none bg-transparent"
+              >
+                <ArrowDownLeft className="w-4 h-4 mr-2" /> Deposit
+              </TabsTrigger>
+              <TabsTrigger
+                id="withdraw-tab"
+                value="withdraw"
+                data-ocid="wallet.withdraw.tab"
+                className="flex-1 h-12 font-bold data-[state=active]:text-[#00F0FF] data-[state=active]:border-b-2 data-[state=active]:border-[#00F0FF] rounded-none bg-transparent"
+              >
+                <ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw
+              </TabsTrigger>
+            </TabsList>
+
+            {/* DEPOSIT */}
+            <TabsContent value="deposit" className="p-6">
+              <form onSubmit={handleDeposit}>
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-white/60 text-xs uppercase tracking-wider mb-2 block">
+                      Select Currency
+                    </Label>
+                    <Select
+                      value={depositForm.currency}
+                      onValueChange={(v) =>
+                        setDepositForm({ ...depositForm, currency: v })
+                      }
+                    >
+                      <SelectTrigger
+                        data-ocid="wallet.deposit.select"
+                        className="bg-white/5 border-white/10 text-white h-11"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ADDRESSES.map((a) => (
+                          <SelectItem key={a.symbol} value={a.symbol}>
+                            {a.currency}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Wallet address display */}
+                  {selectedAddress && (
+                    <div
+                      className="rounded-xl p-4"
+                      style={{
+                        background: `${selectedAddress.color}0A`,
+                        border: `1px solid ${selectedAddress.color}25`,
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-white/50">
+                          Send {selectedAddress.symbol} to this address:
+                        </span>
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: selectedAddress.color }}
+                        >
                           {selectedAddress.network}
                         </span>
                       </div>
-                      <p className="text-xs text-yellow-400 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" />
-                        Send only {selectedAddress.symbol} on{" "}
-                        {selectedAddress.network}. Wrong network = lost funds.
-                      </p>
-                    </div>
-                    <div className="bg-background/60 border border-border/50 rounded-xl p-4">
-                      <div className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">
-                        Wallet Address
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <code
-                          className={`text-sm font-mono ${selectedAddress.color} flex-1 break-all leading-relaxed`}
-                        >
+                      <div className="flex items-center gap-2">
+                        <code className="font-mono text-xs text-white/80 break-all flex-1">
                           {selectedAddress.address}
                         </code>
-                        <CopyButton text={selectedAddress.address} />
+                        <CopyButton text={selectedAddress.address} size="sm" />
+                      </div>
+                      <div className="mt-2 flex items-center gap-1 text-xs text-white/30">
+                        <AlertTriangle className="w-3 h-3 text-[#FFD700]" />
+                        Only send {selectedAddress.symbol} on{" "}
+                        {selectedAddress.network}
                       </div>
                     </div>
-                  </motion.div>
-                )}
+                  )}
 
-                {/* Step 3 – Transaction hash + submit */}
-                <div className="glass-card rounded-2xl p-6">
-                  <div className="flex items-center gap-2 mb-5">
-                    <div className="w-7 h-7 rounded-full bg-gold text-navy text-xs font-bold flex items-center justify-center">
-                      3
-                    </div>
-                    <h3 className="font-display font-bold text-lg text-foreground">
-                      Confirm Your Payment
-                    </h3>
-                  </div>
-                  <form onSubmit={handleDeposit}>
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-sm text-foreground/80 flex items-center gap-2">
-                          <Hash className="w-3.5 h-3.5" /> Transaction Hash /
-                          TXID *
-                        </Label>
-                        <Input
-                          type="text"
-                          placeholder="Paste your blockchain transaction hash"
-                          data-ocid="wallet.input"
-                          value={depositForm.txHash}
-                          onChange={(e) =>
-                            setDepositForm({
-                              ...depositForm,
-                              txHash: e.target.value,
-                            })
-                          }
-                          className="bg-background/50 border-border/60 focus:border-gold/50 h-11 font-mono text-sm"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          After sending, copy the transaction hash from your
-                          wallet/exchange and paste it here.
-                        </p>
-                      </div>
-                      <Button
-                        type="submit"
-                        data-ocid="wallet.submit_button"
-                        disabled={
-                          depositLoading ||
-                          !depositForm.amount ||
-                          !depositForm.txHash
-                        }
-                        className="w-full bg-gradient-to-r from-gold to-orange-brand text-navy font-bold h-12 text-base rounded-xl"
-                      >
-                        {depositLoading ? (
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        ) : (
-                          <ArrowDownLeft className="w-4 h-4 mr-2" />
-                        )}
-                        Submit Deposit Request
-                      </Button>
-                    </div>
-                  </form>
-                </div>
-
-                {/* Exchange options */}
-                <div>
-                  <h3 className="font-display font-bold text-lg text-foreground mb-4">
-                    Pay via Exchange
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="glass-card rounded-xl p-4 opacity-60 relative overflow-hidden">
-                      <div className="absolute top-2 right-2">
-                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> Coming Soon
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center text-lg">
-                          🟡
-                        </div>
-                        <span className="font-bold text-yellow-400/60 text-sm">
-                          Binance Pay
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Binance Pay integration coming soon.
-                      </p>
-                    </div>
-                    <div className="glass-card rounded-xl p-4 border border-orange-500/30">
-                      <div className="absolute top-2 right-2" />
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center text-lg">
-                          🟠
-                        </div>
-                        <span className="font-bold text-orange-400 text-sm">
-                          Bybit Pay
-                        </span>
-                        <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-xs ml-auto">
-                          ✓ Active
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        Scan the QR code with your Bybit App to pay directly.
-                      </p>
-                      <div className="flex justify-center">
-                        <img
-                          src="/assets/uploads/1773727379409-1.jpg"
-                          alt="Bybit Pay QR Code"
-                          className="w-44 h-auto rounded-lg border border-orange-500/20"
-                        />
-                      </div>
-                      <p className="text-xs text-center text-muted-foreground mt-2">
-                        Open Bybit App → Scan QR → Pay
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            </AnimatePresence>
-          </TabsContent>
-
-          {/* ─── WITHDRAW TAB ─── */}
-          <TabsContent value="withdraw">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key="withdraw"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
-              >
-                <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm rounded-xl px-4 py-3 flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>
-                    Minimum withdrawal: <strong>$10</strong>. A 15% platform
-                    commission applies. All requests reviewed by admin within 24
-                    hours.
-                  </span>
-                </div>
-
-                <div className="glass-card rounded-2xl p-6">
-                  <h3 className="font-display font-bold text-lg text-foreground mb-5">
-                    Withdrawal Details
-                  </h3>
-                  <form onSubmit={handleWithdraw}>
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <Label className="text-sm text-foreground/80">
-                            Amount (min $10)
-                          </Label>
-                          <Input
-                            type="number"
-                            min="10"
-                            max={balance}
-                            placeholder="Minimum $10"
-                            data-ocid="wallet.input"
-                            value={withdrawForm.amount}
-                            onChange={(e) =>
-                              setWithdrawForm({
-                                ...withdrawForm,
-                                amount: e.target.value,
-                              })
-                            }
-                            className="bg-background/50 border-border/60 focus:border-gold/50 h-11"
-                          />
-                          {withdrawForm.amount && withdrawAmt > balance && (
-                            <p
-                              className="text-xs text-red-400"
-                              data-ocid="wallet.error_state"
-                            >
-                              Exceeds available balance (${balance.toFixed(2)})
-                            </p>
-                          )}
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-sm text-foreground/80">
-                            Currency
-                          </Label>
-                          <Select
-                            value={withdrawForm.currency}
-                            onValueChange={(v) =>
-                              setWithdrawForm({ ...withdrawForm, currency: v })
-                            }
-                          >
-                            <SelectTrigger
-                              data-ocid="wallet.select"
-                              className="bg-background/50 border-border/60 h-11"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["USDT", "ETH", "BTC", "SOL"].map((c) => (
-                                <SelectItem key={c} value={c}>
-                                  {c}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-sm text-foreground/80">
-                          Your Receiving Wallet Address *
-                        </Label>
-                        <Input
-                          type="text"
-                          placeholder={`Your ${withdrawForm.currency} wallet address`}
-                          data-ocid="wallet.input"
-                          value={withdrawForm.walletAddress}
-                          onChange={(e) =>
-                            setWithdrawForm({
-                              ...withdrawForm,
-                              walletAddress: e.target.value,
-                            })
-                          }
-                          className="bg-background/50 border-border/60 focus:border-gold/50 h-11 font-mono text-sm"
-                        />
-                        {withdrawForm.currency && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Network className="w-3 h-3" /> Network:{" "}
-                            {CURRENCY_NETWORK[withdrawForm.currency]}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Pre-submission summary */}
-                      <AnimatePresence>
-                        {showWithdrawSummary && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="bg-gold/5 border border-gold/20 rounded-xl p-4 space-y-3"
-                            data-ocid="wallet.panel"
-                          >
-                            <div className="text-sm font-bold text-gold flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4" /> Withdrawal
-                              Summary
-                            </div>
-                            <div className="space-y-2 text-sm">
-                              {[
-                                [
-                                  "Amount",
-                                  `$${withdrawForm.amount} ${withdrawForm.currency}`,
-                                ],
-                                [
-                                  "Network",
-                                  CURRENCY_NETWORK[withdrawForm.currency],
-                                ],
-                                [
-                                  "Receiving Address",
-                                  withdrawForm.walletAddress,
-                                ],
-                                ["Platform Fee", "15% commission"],
-                                ["Est. Receive Time", "Within 24 hours"],
-                                [
-                                  "Balance After",
-                                  `$${(balance - withdrawAmt).toFixed(2)} USDT`,
-                                ],
-                              ].map(([label, value]) => (
-                                <div
-                                  key={label}
-                                  className="flex items-start justify-between gap-4"
-                                >
-                                  <span className="text-muted-foreground shrink-0">
-                                    {label}
-                                  </span>
-                                  <span className="text-foreground font-medium text-right break-all">
-                                    {value}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      <Button
-                        type="submit"
-                        data-ocid="wallet.submit_button"
-                        disabled={
-                          withdrawLoading ||
-                          !withdrawForm.amount ||
-                          !withdrawForm.walletAddress ||
-                          withdrawAmt < 10 ||
-                          withdrawAmt > balance
-                        }
-                        className="w-full bg-gradient-to-r from-gold to-orange-brand text-navy font-bold h-12 text-base rounded-xl"
-                      >
-                        {withdrawLoading ? (
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        ) : (
-                          <ArrowUpRight className="w-4 h-4 mr-2" />
-                        )}
-                        Confirm Withdrawal
-                      </Button>
-                    </div>
-                  </form>
-                </div>
-
-                <div className="glass-card rounded-xl p-4 border border-blue-500/20 bg-blue-500/5">
-                  <div className="flex items-start gap-2 text-sm text-blue-300">
-                    <Shield className="w-4 h-4 shrink-0 mt-0.5" />
+                  {/* Bybit Pay QR */}
+                  <div
+                    className="rounded-xl p-4 flex items-center justify-between"
+                    style={{
+                      background: "rgba(255,215,0,0.04)",
+                      border: "1px solid rgba(255,215,0,0.12)",
+                    }}
+                  >
                     <div>
-                      <div className="font-bold mb-1">Security Reminder</div>
-                      <p className="text-xs text-muted-foreground">
-                        Never share your wallet seed phrase or private key with
-                        anyone, including Sandeep Karn Crypto Empire support. We
-                        will never ask for your seed phrase.
+                      <p className="text-sm font-bold text-white">Bybit Pay</p>
+                      <p className="text-xs text-white/40 mt-0.5">
+                        Scan QR with Bybit App
                       </p>
                     </div>
+                    <img
+                      src="/assets/uploads/1773727379409-1.jpg"
+                      alt="Bybit Pay QR"
+                      className="w-16 h-16 rounded-lg object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  </div>
+
+                  <div
+                    className="rounded-xl p-4 flex items-center justify-between"
+                    style={{
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    <div>
+                      <p className="text-sm font-bold text-white">
+                        Binance Pay
+                      </p>
+                      <p className="text-xs text-white/40">
+                        Direct Binance payment
+                      </p>
+                    </div>
+                    <Badge
+                      className="text-xs"
+                      style={{
+                        background: "rgba(255,215,0,0.1)",
+                        color: "#FFD700",
+                        border: "1px solid rgba(255,215,0,0.2)",
+                      }}
+                    >
+                      Coming Soon
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-white/60 text-xs uppercase tracking-wider">
+                      Amount (USDT)
+                    </Label>
+                    <Input
+                      data-ocid="wallet.deposit.input"
+                      type="number"
+                      placeholder="Enter deposit amount"
+                      value={depositForm.amount}
+                      onChange={(e) =>
+                        setDepositForm({
+                          ...depositForm,
+                          amount: e.target.value,
+                        })
+                      }
+                      className="h-11 bg-white/5 border-white/10 text-white placeholder:text-white/25 focus:border-[#FFD700]/40"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-white/60 text-xs uppercase tracking-wider">
+                      <Hash className="w-3 h-3 inline mr-1" />
+                      Transaction Hash
+                    </Label>
+                    <Input
+                      data-ocid="wallet.deposit.input"
+                      type="text"
+                      placeholder="Paste your transaction hash"
+                      value={depositForm.txHash}
+                      onChange={(e) =>
+                        setDepositForm({
+                          ...depositForm,
+                          txHash: e.target.value,
+                        })
+                      }
+                      className="h-11 bg-white/5 border-white/10 text-white placeholder:text-white/25 focus:border-[#FFD700]/40 font-mono text-xs"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    data-ocid="wallet.deposit.submit_button"
+                    disabled={depositLoading}
+                    className="w-full h-11 rounded-lg font-bold text-sm glow-btn-yellow disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {depositLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />{" "}
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <ArrowDownLeft className="w-4 h-4" /> Submit Deposit
+                        Request
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </TabsContent>
+
+            {/* WITHDRAW */}
+            <TabsContent value="withdraw" className="p-6">
+              <form onSubmit={handleWithdraw}>
+                <div className="space-y-4">
+                  <div
+                    className="flex items-center justify-between p-3 rounded-xl"
+                    style={{
+                      background: "rgba(255,215,0,0.06)",
+                      border: "1px solid rgba(255,215,0,0.15)",
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Coins className="w-4 h-4" style={{ color: "#FFD700" }} />
+                      <span className="text-sm text-white/60">
+                        Available Balance
+                      </span>
+                    </div>
+                    <span
+                      className="font-mono font-bold"
+                      style={{ color: "#FFD700" }}
+                    >
+                      ${balance.toFixed(2)} USDT
+                    </span>
+                  </div>
+
+                  <div>
+                    <Label className="text-white/60 text-xs uppercase tracking-wider mb-2 block">
+                      Currency
+                    </Label>
+                    <Select
+                      value={withdrawForm.currency}
+                      onValueChange={(v) =>
+                        setWithdrawForm({ ...withdrawForm, currency: v })
+                      }
+                    >
+                      <SelectTrigger
+                        data-ocid="wallet.withdraw.select"
+                        className="bg-white/5 border-white/10 text-white h-11"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ADDRESSES.map((a) => (
+                          <SelectItem key={a.symbol} value={a.symbol}>
+                            {a.currency}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-white/60 text-xs uppercase tracking-wider">
+                      Amount (min $10)
+                    </Label>
+                    <Input
+                      data-ocid="wallet.withdraw.input"
+                      type="number"
+                      placeholder="Enter withdrawal amount"
+                      value={withdrawForm.amount}
+                      onChange={(e) =>
+                        setWithdrawForm({
+                          ...withdrawForm,
+                          amount: e.target.value,
+                        })
+                      }
+                      className="h-11 bg-white/5 border-white/10 text-white placeholder:text-white/25 focus:border-[#00F0FF]/40"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-white/60 text-xs uppercase tracking-wider">
+                      <Network className="w-3 h-3 inline mr-1" />
+                      Your Wallet Address
+                    </Label>
+                    <Input
+                      data-ocid="wallet.withdraw.input"
+                      type="text"
+                      placeholder="Enter your receiving wallet address"
+                      value={withdrawForm.walletAddress}
+                      onChange={(e) =>
+                        setWithdrawForm({
+                          ...withdrawForm,
+                          walletAddress: e.target.value,
+                        })
+                      }
+                      className="h-11 bg-white/5 border-white/10 text-white placeholder:text-white/25 focus:border-[#00F0FF]/40 font-mono text-xs"
+                    />
+                  </div>
+
+                  {/* Live summary */}
+                  {showWithdrawSummary && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-xl p-4 space-y-2"
+                      style={{
+                        background: "rgba(0,240,255,0.05)",
+                        border: "1px solid rgba(0,240,255,0.2)",
+                      }}
+                    >
+                      <p
+                        className="text-xs font-bold"
+                        style={{ color: "#00F0FF" }}
+                      >
+                        Withdrawal Summary
+                      </p>
+                      {[
+                        {
+                          l: "Amount",
+                          v: `$${withdrawForm.amount} ${withdrawForm.currency}`,
+                        },
+                        {
+                          l: "Network",
+                          v: CURRENCY_NETWORK[withdrawForm.currency] || "—",
+                        },
+                        {
+                          l: "To Address",
+                          v: `${withdrawForm.walletAddress.slice(0, 12)}...${withdrawForm.walletAddress.slice(-6)}`,
+                        },
+                        {
+                          l: "Remaining Balance",
+                          v: `$${(balance - withdrawAmt).toFixed(2)}`,
+                        },
+                      ].map((item) => (
+                        <div
+                          key={item.l}
+                          className="flex justify-between text-xs"
+                        >
+                          <span className="text-white/40">{item.l}</span>
+                          <span className="font-medium text-white">
+                            {item.v}
+                          </span>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+
+                  <button
+                    type="submit"
+                    data-ocid="wallet.withdraw.submit_button"
+                    disabled={withdrawLoading}
+                    className="w-full h-11 rounded-lg font-bold text-sm glow-btn-blue disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {withdrawLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />{" "}
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <ArrowUpRight className="w-4 h-4" /> Submit Withdrawal
+                        Request
+                      </>
+                    )}
+                  </button>
+
+                  <div className="flex items-center gap-2 text-xs text-white/30">
+                    <Shield className="w-3 h-3 shrink-0" />
+                    <span>
+                      Withdrawals are processed by admin. Min: $10, processing
+                      time 1-24h.
+                    </span>
                   </div>
                 </div>
-              </motion.div>
-            </AnimatePresence>
-          </TabsContent>
+              </form>
+            </TabsContent>
+          </Tabs>
+        </motion.div>
 
-          {/* ─── HISTORY TAB ─── */}
-          <TabsContent value="history">
+        {/* Transaction History */}
+        {txHistory.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="rounded-2xl overflow-hidden"
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
             <div
-              className="glass-card rounded-2xl overflow-hidden"
-              data-ocid="wallet.table"
+              className="px-5 py-4 border-b"
+              style={{ borderColor: "rgba(255,255,255,0.05)" }}
             >
-              {txHistory.length === 0 ? (
-                <div
-                  data-ocid="wallet.empty_state"
-                  className="text-center py-16"
-                >
-                  <WalletIcon className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-                  <p className="text-muted-foreground font-medium">
-                    No transactions yet
-                  </p>
-                  <p className="text-sm text-muted-foreground/60 mt-1">
-                    Your deposit and withdrawal history will appear here.
-                  </p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-border/50 bg-background/30">
-                        {[
-                          "Order ID",
-                          "Type",
-                          "Amount",
-                          "Currency",
-                          "Status",
-                          "Date",
-                        ].map((h) => (
-                          <th
-                            key={h}
-                            className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider"
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {txHistory.map((tx: any, i: number) => (
-                        <tr
-                          key={tx.date + String(i)}
-                          data-ocid={`wallet.row.${i + 1}`}
-                          className="border-b border-border/20 hover:bg-gold/5 transition-colors"
-                        >
-                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                            {tx.orderId || "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <Badge
-                              variant="outline"
-                              className={
-                                tx.type === "deposit"
-                                  ? "text-green-400 border-green-500/30 bg-green-500/10"
-                                  : "text-orange-400 border-orange-500/30 bg-orange-500/10"
-                              }
-                            >
-                              {tx.type === "deposit" ? (
-                                <ArrowDownLeft className="w-3 h-3 mr-1" />
-                              ) : (
-                                <ArrowUpRight className="w-3 h-3 mr-1" />
-                              )}
-                              {tx.type}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3 font-mono font-bold text-foreground">
-                            ${tx.amount}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-foreground">
-                            {tx.currency}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                                tx.status === "approved"
-                                  ? "bg-green-500/20 text-green-400"
-                                  : tx.status === "rejected"
-                                    ? "bg-red-500/20 text-red-400"
-                                    : "bg-yellow-500/20 text-yellow-400"
-                              }`}
-                            >
-                              {tx.status === "pending"
-                                ? "⏳ Pending"
-                                : tx.status === "approved"
-                                  ? "✅ Approved"
-                                  : "❌ Rejected"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                            {new Date(tx.date).toLocaleDateString()}{" "}
-                            {new Date(tx.date).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <h3 className="font-display font-bold text-white text-sm">
+                Transaction History
+              </h3>
             </div>
-          </TabsContent>
-        </Tabs>
+            {txHistory.slice(0, 10).map((tx: any, i: number) => (
+              <div
+                key={String(i)}
+                data-ocid={i < 5 ? `wallet.tx.item.${i + 1}` : undefined}
+                className="flex items-center gap-3 px-5 py-3 border-b last:border-0"
+                style={{ borderColor: "rgba(255,255,255,0.04)" }}
+              >
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                  style={{
+                    background:
+                      tx.type === "deposit"
+                        ? "rgba(0,255,136,0.1)"
+                        : "rgba(0,240,255,0.1)",
+                  }}
+                >
+                  {tx.type === "deposit" ? (
+                    <ArrowDownLeft
+                      className="w-4 h-4"
+                      style={{ color: "#00FF88" }}
+                    />
+                  ) : (
+                    <ArrowUpRight
+                      className="w-4 h-4"
+                      style={{ color: "#00F0FF" }}
+                    />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white capitalize">
+                    {tx.type}
+                  </p>
+                  <p className="text-xs text-white/30 truncate">{tx.orderId}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p
+                    className="font-mono text-sm font-bold"
+                    style={{
+                      color: tx.type === "deposit" ? "#00FF88" : "#00F0FF",
+                    }}
+                  >
+                    {tx.type === "deposit" ? "+" : "-"}${tx.amount}{" "}
+                    {tx.currency}
+                  </p>
+                  <div className="flex items-center gap-1 justify-end">
+                    <Clock className="w-3 h-3 text-white/20" />
+                    <span className="text-[10px] text-white/20">
+                      {tx.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </motion.div>
+        )}
       </div>
 
-      {/* ─── DEPOSIT CONFIRMATION MODAL ─── */}
+      {/* Deposit Confirmation Modal */}
       <Dialog
         open={!!depositConfirm}
-        onOpenChange={(o) => !o && setDepositConfirm(null)}
+        onOpenChange={() => setDepositConfirm(null)}
       >
         <DialogContent
-          className="max-w-md glass-card border border-gold/20"
-          data-ocid="wallet.dialog"
+          style={{
+            background: "#0f0f0f",
+            border: "1px solid rgba(255,215,0,0.2)",
+          }}
         >
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl font-display">
-              <div className="w-8 h-8 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center">
-                <CheckCircle2 className="w-4 h-4 text-green-400" />
-              </div>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5" style={{ color: "#00FF88" }} />
               Deposit Request Submitted
             </DialogTitle>
           </DialogHeader>
           {depositConfirm && (
-            <div className="space-y-4">
-              <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3 text-sm text-green-400">
-                ✅ Your deposit request has been received and is pending admin
-                approval.
+            <div className="space-y-3 text-sm">
+              {[
+                { l: "Order ID", v: depositConfirm.orderId },
+                { l: "Currency", v: depositConfirm.currency },
+                { l: "Amount", v: `$${depositConfirm.amount}` },
+                { l: "Network", v: depositConfirm.network },
+                { l: "TX Hash", v: `${depositConfirm.txHash.slice(0, 20)}...` },
+              ].map((item) => (
+                <div key={item.l} className="flex justify-between">
+                  <span className="text-white/40">{item.l}</span>
+                  <span className="text-white font-medium">{item.v}</span>
+                </div>
+              ))}
+              <div className="pt-3 text-xs text-white/30">
+                Admin will verify and credit your balance within 1-24 hours.
               </div>
-              <div className="space-y-3 text-sm">
-                {[
-                  ["Order ID", depositConfirm.orderId],
-                  ["Currency", depositConfirm.currency],
-                  ["Amount", `$${depositConfirm.amount} USD`],
-                  ["Network", depositConfirm.network],
-                  ["Wallet Address Sent To", depositConfirm.walletAddress],
-                  ["Transaction Hash", depositConfirm.txHash],
-                  ["Status", "⏳ Pending Admin Approval"],
-                  ["Est. Processing", "Within 24 hours"],
-                ].map(([label, value]) => (
-                  <div
-                    key={label}
-                    className="flex items-start justify-between gap-4 pb-2 border-b border-border/20 last:border-0"
-                  >
-                    <span className="text-muted-foreground shrink-0 font-medium">
-                      {label}
-                    </span>
-                    <span className="text-foreground text-right break-all font-mono text-xs">
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <Button
-                data-ocid="wallet.close_button"
+              <button
+                type="button"
                 onClick={() => setDepositConfirm(null)}
-                className="w-full bg-gradient-to-r from-gold to-orange-brand text-navy font-bold"
+                data-ocid="wallet.deposit.close_button"
+                className="w-full h-10 rounded-lg font-bold text-sm glow-btn-yellow mt-2"
               >
-                Close
-              </Button>
+                Done
+              </button>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* ─── WITHDRAWAL CONFIRMATION MODAL ─── */}
+      {/* Withdraw Confirmation Modal */}
       <Dialog
         open={!!withdrawConfirm}
-        onOpenChange={(o) => !o && setWithdrawConfirm(null)}
+        onOpenChange={() => setWithdrawConfirm(null)}
       >
         <DialogContent
-          className="max-w-md glass-card border border-gold/20"
-          data-ocid="wallet.dialog"
+          style={{
+            background: "#0f0f0f",
+            border: "1px solid rgba(0,240,255,0.2)",
+          }}
         >
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl font-display">
-              <div className="w-8 h-8 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center">
-                <CheckCircle2 className="w-4 h-4 text-green-400" />
-              </div>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5" style={{ color: "#00F0FF" }} />
               Withdrawal Request Submitted
             </DialogTitle>
           </DialogHeader>
           {withdrawConfirm && (
-            <div className="space-y-4">
-              <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3 text-sm text-green-400">
-                ✅ Your withdrawal request has been received and is pending
-                admin approval.
+            <div className="space-y-3 text-sm">
+              {[
+                { l: "Order ID", v: withdrawConfirm.orderId },
+                { l: "Currency", v: withdrawConfirm.currency },
+                { l: "Amount", v: `$${withdrawConfirm.amount}` },
+                { l: "Network", v: withdrawConfirm.network },
+                {
+                  l: "Remaining Balance",
+                  v: `$${withdrawConfirm.remainingBalance.toFixed(2)}`,
+                },
+              ].map((item) => (
+                <div key={item.l} className="flex justify-between">
+                  <span className="text-white/40">{item.l}</span>
+                  <span className="text-white font-medium">{item.v}</span>
+                </div>
+              ))}
+              <div className="pt-3 text-xs text-white/30">
+                Your wallet address:{" "}
+                <span className="font-mono text-white/50 break-all">
+                  {withdrawConfirm.walletAddress}
+                </span>
               </div>
-              <div className="space-y-3 text-sm">
-                {[
-                  ["Order ID", withdrawConfirm.orderId],
-                  [
-                    "Amount Requested",
-                    `$${withdrawConfirm.amount} ${withdrawConfirm.currency}`,
-                  ],
-                  [
-                    "Currency & Network",
-                    `${withdrawConfirm.currency} • ${withdrawConfirm.network}`,
-                  ],
-                  ["Your Wallet Address", withdrawConfirm.walletAddress],
-                  [
-                    "Remaining Balance",
-                    `$${withdrawConfirm.remainingBalance.toFixed(2)} USDT`,
-                  ],
-                  ["Status", "⏳ Pending Admin Approval"],
-                  ["Est. Processing", "Within 24 hours"],
-                ].map(([label, value]) => (
-                  <div
-                    key={label}
-                    className="flex items-start justify-between gap-4 pb-2 border-b border-border/20 last:border-0"
-                  >
-                    <span className="text-muted-foreground shrink-0 font-medium">
-                      {label}
-                    </span>
-                    <span className="text-foreground text-right break-all font-mono text-xs">
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-                <p className="text-xs text-red-400 flex items-start gap-2">
-                  <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>
-                    <strong>Important:</strong> Never share your wallet seed
-                    phrase or private key with anyone. Sandeep Karn Crypto
-                    Empire will never ask for your seed phrase.
-                  </span>
-                </p>
-              </div>
-              <Button
-                data-ocid="wallet.close_button"
+              <button
+                type="button"
                 onClick={() => setWithdrawConfirm(null)}
-                className="w-full bg-gradient-to-r from-gold to-orange-brand text-navy font-bold"
+                data-ocid="wallet.withdraw.close_button"
+                className="w-full h-10 rounded-lg font-bold text-sm glow-btn-blue mt-2"
               >
-                Close
-              </Button>
+                Done
+              </button>
             </div>
           )}
         </DialogContent>

@@ -3,8 +3,10 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
+import { useActor } from "../hooks/useActor";
 
 export interface LocalUser {
   username: string;
@@ -50,6 +52,14 @@ async function hashPassword(password: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function hexToUint8Array(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = Number.parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
 function generateReferralCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
@@ -79,11 +89,13 @@ function getCurrentUser(): AuthUser | null {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { actor } = useActor();
+  const actorRef = useRef(actor);
+  actorRef.current = actor;
 
   const refreshUser = useCallback(() => {
     const current = getCurrentUser();
     if (current) {
-      // Re-read from users array to get latest data
       const users = getUsers();
       const latest = users.find(
         (u) => u.username.toLowerCase() === current.username.toLowerCase(),
@@ -132,10 +144,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           u.username.toLowerCase() === usernameOrEmail.toLowerCase() ||
           u.email.toLowerCase() === usernameOrEmail.toLowerCase(),
       );
+
+      if (found && found.passwordHash === hash) {
+        localStorage.setItem("sce_current_user", JSON.stringify(found));
+        setUser(found);
+        return;
+      }
+
+      // Try backend login for users registered from other devices
+      const currentActor = actorRef.current;
+      if (currentActor) {
+        try {
+          const hashBytes = hexToUint8Array(hash);
+          const backendUser = await (currentActor as any).loginUser(
+            usernameOrEmail,
+            hashBytes,
+          );
+          if (backendUser) {
+            // Convert canister UserInfo to LocalUser
+            const localUser: LocalUser = {
+              username: backendUser.username,
+              email: backendUser.email,
+              fullName: backendUser.fullName,
+              passwordHash: hash,
+              balance: Number(backendUser.balance) / 1_000_000,
+              totalEarned: Number(backendUser.totalEarned) / 1_000_000,
+              totalDeposited: Number(backendUser.totalDeposited) / 1_000_000,
+              referralCode: backendUser.referralCode,
+              joinDate: new Date(
+                Number(backendUser.joinDate) / 1_000_000,
+              ).toISOString(),
+              activePlan: null,
+              planActivatedAt: null,
+              referredBy:
+                backendUser.referredBy && backendUser.referredBy.length > 0
+                  ? backendUser.referredBy[0]
+                  : null,
+            };
+            // Merge into localStorage so future logins work offline
+            const existingUsers = getUsers();
+            const existingIdx = existingUsers.findIndex(
+              (u) =>
+                u.username.toLowerCase() === localUser.username.toLowerCase(),
+            );
+            if (existingIdx === -1) {
+              existingUsers.push(localUser);
+            } else {
+              existingUsers[existingIdx] = {
+                ...existingUsers[existingIdx],
+                ...localUser,
+              };
+            }
+            saveUsers(existingUsers);
+            localStorage.setItem("sce_current_user", JSON.stringify(localUser));
+            setUser(localUser);
+            return;
+          }
+        } catch {
+          // Backend login failed, fall through to error
+        }
+      }
+
       if (!found) throw new Error("User not found. Please register first.");
-      if (found.passwordHash !== hash) throw new Error("Incorrect password.");
-      localStorage.setItem("sce_current_user", JSON.stringify(found));
-      setUser(found);
+      throw new Error("Incorrect password.");
     } finally {
       setIsLoading(false);
     }
@@ -189,6 +260,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       saveUsers(users);
       localStorage.setItem("sce_current_user", JSON.stringify(newUser));
       setUser(newUser);
+
+      // Also register in backend canister for cross-device visibility
+      const currentActor = actorRef.current;
+      if (currentActor) {
+        try {
+          const hashBytes = hexToUint8Array(hash);
+          await (currentActor as any).registerUserFull(
+            username,
+            hashBytes,
+            email,
+            fullName,
+            newUser.referralCode,
+            referralCode ? [referralCode] : [],
+          );
+        } catch {
+          // Silent fallback - localStorage registration still succeeded
+        }
+      }
     } finally {
       setIsLoading(false);
     }
