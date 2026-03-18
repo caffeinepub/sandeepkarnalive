@@ -11,9 +11,26 @@ import {
   XCircle,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function getSCEUsers() {
+  try {
+    return JSON.parse(localStorage.getItem("sce_users") || "[]");
+  } catch {
+    return [];
+  }
+}
 
 const STEPS = [
   { id: 1, label: "Document", icon: FileText },
@@ -24,20 +41,52 @@ const STEPS = [
 type KYCStatus = "idle" | "pending" | "verified" | "rejected";
 
 export function KYC() {
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [docType, setDocType] = useState("passport");
   const [docFile, setDocFile] = useState<File | null>(null);
+  const [docBackFile, setDocBackFile] = useState<File | null>(null);
   const [selfieFile, setSelfieFile] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
   const [status, setStatus] = useState<KYCStatus>("idle");
   const [dragging, setDragging] = useState(false);
   const docInputRef = useRef<HTMLInputElement>(null);
+  const docBackInputRef = useRef<HTMLInputElement>(null);
   const selfieInputRef = useRef<HTMLInputElement>(null);
+
+  // Load KYC status from localStorage on mount
+  useEffect(() => {
+    if (!user) return;
+    const raw = localStorage.getItem(`sce_kyc_${user.username}`);
+    if (raw) {
+      try {
+        const data = JSON.parse(raw);
+        if (data.status) {
+          setStatus(data.status as KYCStatus);
+          if (
+            data.status === "pending" ||
+            data.status === "verified" ||
+            data.status === "rejected"
+          ) {
+            setStep(3);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [user]);
 
   function handleDocFile(file: File | null) {
     if (!file) return;
     setDocFile(file);
-    toast.success("Document uploaded successfully!");
+    toast.success("Front side uploaded successfully!");
+  }
+
+  function handleDocBackFile(file: File | null) {
+    if (!file) return;
+    setDocBackFile(file);
+    toast.success("Back side uploaded successfully!");
   }
 
   function handleSelfie(file: File | null) {
@@ -47,11 +96,49 @@ export function KYC() {
   }
 
   async function handleSubmit() {
+    if (!user) {
+      toast.error("Please login first.");
+      return;
+    }
     setScanning(true);
-    await new Promise((r) => setTimeout(r, 3000));
-    setScanning(false);
-    setStatus("pending");
-    toast.success("KYC submitted! Under review by admin.");
+    try {
+      const docBase64 = docFile ? await fileToBase64(docFile) : "";
+      const docBackBase64 = docBackFile ? await fileToBase64(docBackFile) : "";
+      const selfieBase64 = selfieFile ? await fileToBase64(selfieFile) : "";
+
+      // Simulate AI scan delay
+      await new Promise((r) => setTimeout(r, 3000));
+
+      const kycData = {
+        username: user.username,
+        email: user.email || "",
+        docType,
+        docPreview: docBase64,
+        docBackPreview: docBackBase64,
+        selfiePreview: selfieBase64,
+        submittedAt: new Date().toISOString(),
+        status: "pending",
+      };
+
+      localStorage.setItem(`sce_kyc_${user.username}`, JSON.stringify(kycData));
+
+      // Also update user's kycStatus in sce_users array
+      const users = getSCEUsers();
+      const idx = users.findIndex(
+        (u: any) => u.username.toLowerCase() === user.username.toLowerCase(),
+      );
+      if (idx !== -1) {
+        users[idx].kycStatus = "pending";
+        localStorage.setItem("sce_users", JSON.stringify(users));
+      }
+
+      setScanning(false);
+      setStatus("pending");
+      toast.success("KYC submitted! Under review by admin.");
+    } catch {
+      setScanning(false);
+      toast.error("Failed to submit KYC. Please try again.");
+    }
   }
 
   const statusBadge: Record<
@@ -107,45 +194,46 @@ export function KYC() {
             </span>
           </div>
           <p className="text-white/40 text-sm">
-            Complete identity verification to unlock higher withdrawal limits.
+            Complete identity verification to unlock higher withdrawal limits
+            and P2P trading.
           </p>
         </motion.div>
 
         {/* 3-step progress bar */}
         <div className="flex items-center mb-8">
-          {STEPS.map((s, idx) => (
+          {STEPS.map((st, idx) => (
             <>
               <button
-                key={s.id}
+                key={st.id}
                 type="button"
-                onClick={() => step > s.id && setStep(s.id)}
+                onClick={() => step > st.id && setStep(st.id)}
                 className="flex flex-col items-center gap-1.5"
               >
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center transition-all"
                   style={{
                     background:
-                      step > s.id
+                      step > st.id
                         ? "linear-gradient(135deg, #00FF88, #00cc66)"
-                        : step === s.id
+                        : step === st.id
                           ? "linear-gradient(135deg, #FFD700, #FFA500)"
                           : "rgba(255,255,255,0.08)",
                     boxShadow:
-                      step === s.id
+                      step === st.id
                         ? "0 0 15px rgba(255,215,0,0.4)"
-                        : step > s.id
+                        : step > st.id
                           ? "0 0 10px rgba(0,255,136,0.3)"
                           : "none",
                   }}
                 >
-                  {step > s.id ? (
+                  {step > st.id ? (
                     <CheckCircle className="w-5 h-5 text-black" />
                   ) : (
-                    <s.icon
+                    <st.icon
                       className="w-4 h-4"
                       style={{
                         color:
-                          step === s.id ? "#0a0a0a" : "rgba(255,255,255,0.4)",
+                          step === st.id ? "#0a0a0a" : "rgba(255,255,255,0.4)",
                       }}
                     />
                   )}
@@ -153,10 +241,10 @@ export function KYC() {
                 <span
                   className="text-xs font-medium"
                   style={{
-                    color: step >= s.id ? "#FFD700" : "rgba(255,255,255,0.3)",
+                    color: step >= st.id ? "#FFD700" : "rgba(255,255,255,0.3)",
                   }}
                 >
-                  {s.label}
+                  {st.label}
                 </span>
               </button>
               {idx < STEPS.length - 1 && (
@@ -165,7 +253,7 @@ export function KYC() {
                   className="flex-1 h-0.5 mx-3 mb-5"
                   style={{
                     background:
-                      step > s.id ? "#00FF88" : "rgba(255,255,255,0.08)",
+                      step > st.id ? "#00FF88" : "rgba(255,255,255,0.08)",
                   }}
                 />
               )}
@@ -191,7 +279,7 @@ export function KYC() {
                 Document Upload
               </h2>
               <p className="text-white/40 text-sm mb-5">
-                Upload a clear photo of your government-issued ID
+                Upload clear photos of both sides of your government-issued ID
               </p>
 
               {/* Doc type selector */}
@@ -226,6 +314,9 @@ export function KYC() {
                 ))}
               </div>
 
+              <p className="text-sm font-medium text-white/70 mb-2">
+                📸 Front Side *
+              </p>
               {/* Drop zone */}
               <div
                 onDragOver={(e) => {
@@ -277,20 +368,87 @@ export function KYC() {
                   <>
                     <Upload className="w-10 h-10 mb-3 text-white/20" />
                     <p className="font-medium text-white/60 text-sm">
-                      Drop your document here
+                      Front side of ID
                     </p>
                     <p className="text-xs text-white/30 mt-1">
-                      or click to browse — JPG, PNG, PDF accepted
+                      Click or drop here — JPG, PNG, PDF
                     </p>
                   </>
                 )}
+              </div>
+
+              {/* Back side upload */}
+              <div className="mt-4">
+                <p className="text-sm font-medium text-white/70 mb-2">
+                  {docType === "passport"
+                    ? "📄 Inside page (optional)"
+                    : "📸 Back Side *"}
+                </p>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    handleDocBackFile(e.dataTransfer.files[0]);
+                  }}
+                  onClick={() => docBackInputRef.current?.click()}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && docBackInputRef.current?.click()
+                  }
+                  className="rounded-xl flex flex-col items-center justify-center py-8 cursor-pointer transition-all w-full text-center"
+                  style={{
+                    border: `2px dashed ${docBackFile ? "#00FF88" : "rgba(0,240,255,0.3)"}`,
+                    background: docBackFile
+                      ? "rgba(0,255,136,0.04)"
+                      : "rgba(255,255,255,0.02)",
+                  }}
+                >
+                  <input
+                    ref={docBackInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleDocBackFile(e.target.files?.[0] || null)
+                    }
+                  />
+                  {docBackFile ? (
+                    <>
+                      <CheckCircle
+                        className="w-8 h-8 mb-2"
+                        style={{ color: "#00FF88" }}
+                      />
+                      <p className="font-medium text-white text-sm">
+                        {docBackFile.name}
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: "#00FF88" }}>
+                        Back side uploaded
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-8 h-8 mb-2 text-white/20" />
+                      <p className="font-medium text-white/60 text-sm">
+                        Back side of ID
+                      </p>
+                      <p className="text-xs text-white/30 mt-1">
+                        Click or drop here
+                      </p>
+                    </>
+                  )}
+                </div>
               </div>
 
               <button
                 type="button"
                 onClick={() => {
                   if (!docFile) {
-                    toast.error("Please upload your document first.");
+                    toast.error("Please upload front side first.");
+                    return;
+                  }
+                  if (!docBackFile && docType !== "passport") {
+                    toast.error("Please upload back side too.");
                     return;
                   }
                   setStep(2);
@@ -332,7 +490,6 @@ export function KYC() {
                 }}
               >
                 <User className="w-24 h-24 text-white/10" />
-                {/* Corner guides */}
                 {[
                   "top-2 left-2",
                   "top-2 right-2",
@@ -434,7 +591,6 @@ export function KYC() {
 
               {scanning ? (
                 <div className="flex flex-col items-center py-8">
-                  {/* AI scan animation */}
                   <div className="relative w-24 h-24 mb-6">
                     <div
                       className="absolute inset-0 rounded-full"
@@ -504,9 +660,62 @@ export function KYC() {
                     Admin will review your documents within 24-48 hours.
                   </p>
                 </div>
+              ) : status === "verified" ? (
+                <div className="py-8">
+                  <div
+                    className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4"
+                    style={{
+                      background: "rgba(0,255,136,0.1)",
+                      border: "2px solid #00FF88",
+                      boxShadow: "0 0 20px rgba(0,255,136,0.3)",
+                    }}
+                  >
+                    <CheckCircle
+                      className="w-8 h-8"
+                      style={{ color: "#00FF88" }}
+                    />
+                  </div>
+                  <p className="font-display font-bold text-white text-xl mb-2">
+                    Identity Verified!
+                  </p>
+                  <p className="text-white/40 text-sm">
+                    You can now use full deposit, withdrawal, and P2P trading.
+                  </p>
+                </div>
+              ) : status === "rejected" ? (
+                <div className="py-8">
+                  <div
+                    className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4"
+                    style={{
+                      background: "rgba(255,51,102,0.1)",
+                      border: "2px solid #FF3366",
+                      boxShadow: "0 0 20px rgba(255,51,102,0.3)",
+                    }}
+                  >
+                    <XCircle className="w-8 h-8" style={{ color: "#FF3366" }} />
+                  </div>
+                  <p className="font-display font-bold text-white text-xl mb-2">
+                    Verification Rejected
+                  </p>
+                  <p className="text-white/40 text-sm mb-4">
+                    Your documents were not approved. Please resubmit with
+                    clearer photos.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep(1);
+                      setDocFile(null);
+                      setSelfieFile(null);
+                      setStatus("idle");
+                    }}
+                    className="px-6 py-2 rounded-lg font-bold text-sm glow-btn-yellow"
+                  >
+                    Resubmit Documents
+                  </button>
+                </div>
               ) : (
                 <>
-                  {/* Summary */}
                   <div className="space-y-3 text-left mb-6">
                     <div
                       className="flex items-center justify-between px-4 py-3 rounded-xl"
@@ -580,9 +789,7 @@ export function KYC() {
                           <CheckCircle className="w-3.5 h-3.5" /> Captured
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-sm text-white/40">
-                          Optional
-                        </span>
+                        <span className="text-xs text-white/40">Optional</span>
                       )}
                     </div>
                   </div>

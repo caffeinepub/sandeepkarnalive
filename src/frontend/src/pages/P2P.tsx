@@ -124,7 +124,20 @@ const INITIAL_CHAT: ChatMessage[] = [
 ];
 
 export function P2P() {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
+
+  const kycData = user
+    ? (() => {
+        try {
+          return JSON.parse(
+            localStorage.getItem(`sce_kyc_${user.username}`) || "null",
+          );
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+  const kycVerified = kycData?.status === "verified";
   const [tab, setTab] = useState<"BUY" | "SELL">("BUY");
   const [currency, setCurrency] = useState("USD");
   const [payMethod, setPayMethod] = useState("all");
@@ -216,6 +229,47 @@ export function P2P() {
             payment confirmed.
           </p>
         </motion.div>
+
+        {/* KYC Gate Banner */}
+        {!kycVerified && (
+          <div
+            className="rounded-2xl p-5 mb-6 flex items-start gap-4"
+            data-ocid="p2p.kyc.error_state"
+            style={{
+              background: "rgba(255,215,0,0.06)",
+              border: "2px solid rgba(255,215,0,0.35)",
+              boxShadow: "0 0 20px rgba(255,215,0,0.08)",
+            }}
+          >
+            <Shield
+              className="w-6 h-6 shrink-0 mt-0.5"
+              style={{ color: "#FFD700" }}
+            />
+            <div className="flex-1">
+              <p className="font-bold text-white mb-1">
+                KYC Verification Required
+              </p>
+              <p className="text-sm text-white/50 mb-3">
+                You must complete KYC identity verification to use P2P trading.
+                This ensures a safe and secure trading environment.
+              </p>
+              <a href="/kyc">
+                <button
+                  type="button"
+                  data-ocid="p2p.kyc.primary_button"
+                  className="px-4 py-2 rounded-lg text-sm font-bold transition-all"
+                  style={{
+                    background: "rgba(255,215,0,0.2)",
+                    border: "1px solid rgba(255,215,0,0.4)",
+                    color: "#FFD700",
+                  }}
+                >
+                  Verify Now →
+                </button>
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* Escrow info bar */}
         <div

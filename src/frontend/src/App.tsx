@@ -25,7 +25,6 @@ import { Login } from "./pages/Login";
 import { MemeCoinTrading } from "./pages/MemeCoinTrading";
 import { News } from "./pages/News";
 import { P2P } from "./pages/P2P";
-import { Plans } from "./pages/Plans";
 import { Profile } from "./pages/Profile";
 import { Referral } from "./pages/Referral";
 import { Signals } from "./pages/Signals";
@@ -51,17 +50,12 @@ const rootRoute = createRootRoute({
   ),
 });
 
-const routes = [
+const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: "/", component: Home }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/blog",
     component: Blog,
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/plans",
-    component: Plans,
   }),
   createRoute({
     getParentRoute: () => rootRoute,
@@ -158,9 +152,8 @@ const routes = [
     path: "/admin/dashboard",
     component: AdminDashboard,
   }),
-];
+]);
 
-const routeTree = rootRoute.addChildren(routes);
 const router = createRouter({ routeTree });
 
 declare module "@tanstack/react-router" {

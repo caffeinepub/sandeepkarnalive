@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Rocket,
   Shield,
+  ShieldCheck,
   Star,
   TrendingDown,
   TrendingUp,
@@ -84,14 +85,6 @@ const EARN_CATEGORIES = [
     desc: "Trade signals, buy/sell crypto tasks",
     glow: "rgba(0,255,136,0.1)",
     border: "rgba(0,255,136,0.2)",
-  },
-  {
-    key: "Invest",
-    label: "Investment Tasks",
-    icon: <BarChart2 className="w-6 h-6" style={{ color: "#00F0FF" }} />,
-    desc: "Investment plans and growth rewards",
-    glow: "rgba(0,240,255,0.1)",
-    border: "rgba(0,240,255,0.15)",
   },
   {
     key: "Referral",
@@ -1149,6 +1142,104 @@ export function Home() {
               </p>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Quick Feature Cards - KYC & Wallet */}
+      <section className="py-6 px-4 relative z-10">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="rounded-2xl p-5 flex items-center gap-4 cursor-pointer hover:scale-[1.02] transition-transform"
+              style={{
+                background: "rgba(0,255,136,0.05)",
+                border: "1px solid rgba(0,255,136,0.25)",
+                boxShadow: "0 0 20px rgba(0,255,136,0.06)",
+              }}
+            >
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  background: "rgba(0,255,136,0.12)",
+                  boxShadow: "0 0 15px rgba(0,255,136,0.2)",
+                }}
+              >
+                <ShieldCheck className="w-6 h-6" style={{ color: "#00FF88" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-white text-sm mb-0.5">
+                  KYC Verification
+                </div>
+                <div className="text-xs text-white/40">
+                  Verify your identity to unlock full withdrawal limits and P2P
+                  trading
+                </div>
+              </div>
+              <Link to="/kyc">
+                <button
+                  type="button"
+                  data-ocid="home.kyc.primary_button"
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                  style={{
+                    background: "rgba(0,255,136,0.15)",
+                    border: "1px solid rgba(0,255,136,0.3)",
+                    color: "#00FF88",
+                  }}
+                >
+                  Verify
+                </button>
+              </Link>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.1 }}
+              className="rounded-2xl p-5 flex items-center gap-4 cursor-pointer hover:scale-[1.02] transition-transform"
+              style={{
+                background: "rgba(255,215,0,0.05)",
+                border: "1px solid rgba(255,215,0,0.25)",
+                boxShadow: "0 0 20px rgba(255,215,0,0.06)",
+              }}
+            >
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  background: "rgba(255,215,0,0.12)",
+                  boxShadow: "0 0 15px rgba(255,215,0,0.2)",
+                }}
+              >
+                <Wallet className="w-6 h-6" style={{ color: "#FFD700" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-white text-sm mb-0.5">
+                  My Wallet
+                </div>
+                <div className="text-xs text-white/40">
+                  Manage your USDT, BTC, ETH, SOL balances. Deposit and withdraw
+                  anytime.
+                </div>
+              </div>
+              <Link to="/wallet">
+                <button
+                  type="button"
+                  data-ocid="home.wallet.primary_button"
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                  style={{
+                    background: "rgba(255,215,0,0.15)",
+                    border: "1px solid rgba(255,215,0,0.3)",
+                    color: "#FFD700",
+                  }}
+                >
+                  Open
+                </button>
+              </Link>
+            </motion.div>
+          </div>
         </div>
       </section>
 

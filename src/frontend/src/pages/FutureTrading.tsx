@@ -85,12 +85,12 @@ export function FutureTrading() {
   const [positions, setPositions] = useState<FuturesPosition[]>(loadPositions);
 
   const [prices, setPrices] = useState<Record<string, number>>(
-    Object.fromEntries(MARKETS.map((m) => [m.symbol, m.basePrice])),
+    Object.fromEntries(MARKETS.map((m) => [m.symbol, 0])),
   );
   const priceRef = useRef(prices);
   priceRef.current = prices;
   const anchorPrices = useRef<Record<string, number>>(
-    Object.fromEntries(MARKETS.map((m) => [m.symbol, m.basePrice])),
+    Object.fromEntries(MARKETS.map((m) => [m.symbol, 0])),
   );
 
   useEffect(() => {
@@ -126,7 +126,7 @@ export function FutureTrading() {
       setPrices((prev) =>
         Object.fromEntries(
           MARKETS.map((m) => {
-            const current = prev[m.symbol] || m.basePrice;
+            const current = prev[m.symbol] || 0;
             const drift = (Math.random() - 0.5) * 0.0005;
             return [m.symbol, current * (1 + drift)];
           }),
@@ -137,7 +137,7 @@ export function FutureTrading() {
   }, []);
 
   const marginNum = Number.parseFloat(margin) || 0;
-  const currentPrice = prices[market.symbol] || market.basePrice;
+  const currentPrice = prices[market.symbol] || 0;
   const positionSize = marginNum * leverage;
   const liquidationPrice =
     direction === "LONG"
@@ -315,7 +315,7 @@ export function FutureTrading() {
                 {MARKETS.map((m, i) => {
                   const price = prices[m.symbol];
                   const isSelected = market.symbol === m.symbol;
-                  const anchor = anchorPrices.current[m.symbol] || m.basePrice;
+                  const anchor = anchorPrices.current[m.symbol] || 0;
                   const diff = ((price - anchor) / anchor) * 100;
                   return (
                     <motion.button
@@ -672,13 +672,16 @@ export function FutureTrading() {
               <Button
                 data-ocid="futures.primary_button"
                 onClick={openPosition}
+                disabled={currentPrice === 0}
                 className={`w-full font-bold ${
                   direction === "LONG"
                     ? "bg-green-600 hover:bg-green-700 text-white"
                     : "bg-red-600 hover:bg-red-700 text-white"
                 }`}
               >
-                Open {direction} {leverage}x
+                {currentPrice === 0
+                  ? "Loading Price..."
+                  : `Open ${direction} ${leverage}x`}
               </Button>
             </motion.div>
 

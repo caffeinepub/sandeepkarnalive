@@ -13,6 +13,7 @@ import {
   Megaphone,
   Plus,
   Shield,
+  ShieldCheck,
   Trash2,
   TrendingUp,
   Users,
@@ -263,6 +264,7 @@ export function AdminDashboard() {
   );
 
   const [canisterUsers, setCanisterUsers] = React.useState<any[]>([]);
+  const [kycSubmissions, setKycSubmissions] = React.useState<any[]>([]);
   const [setBalanceForm, setSetBalanceForm] = React.useState<{
     username: string;
     value: string;
@@ -299,10 +301,22 @@ export function AdminDashboard() {
   // Auto-refresh users, deposits, withdrawals every 3 seconds and on focus
   useEffect(() => {
     function refresh() {
-      setUsers(getSCEUsers());
+      const allUsrs = getSCEUsers();
+      setUsers(allUsrs);
       const { deposits: d, withdrawals: w } = getPendingTx();
       setDeposits(d);
       setWithdrawals(w);
+      // Load KYC submissions
+      const subs: any[] = [];
+      for (const u of allUsrs) {
+        const kyc = localStorage.getItem(`sce_kyc_${u.username}`);
+        if (kyc) {
+          try {
+            subs.push(JSON.parse(kyc));
+          } catch {}
+        }
+      }
+      setKycSubmissions(subs);
     }
     const interval = setInterval(refresh, 3000);
     window.addEventListener("focus", refresh);
@@ -610,6 +624,10 @@ export function AdminDashboard() {
               ["withdrawals", `Withdrawals (${withdrawals.length})`],
               ["futures", "Futures"],
               ["users", "Users"],
+              [
+                "kyc",
+                `KYC Review (${kycSubmissions.filter((k) => k.status === "pending").length})`,
+              ],
               ["settings", "Settings"],
             ].map(([val, label]) => (
               <TabsTrigger
@@ -2249,6 +2267,198 @@ export function AdminDashboard() {
                               <span className="text-xs text-muted-foreground">
                                 —
                               </span>
+                            )}
+                          </td>
+                        </motion.tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* KYC Review */}
+          <TabsContent value="kyc">
+            <div className="glass-card rounded-2xl p-5">
+              <h3 className="font-display font-bold text-foreground mb-4 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-gold" /> KYC Submissions
+              </h3>
+              {kycSubmissions.length === 0 ? (
+                <div
+                  data-ocid="admin.kyc.empty_state"
+                  className="text-muted-foreground text-sm py-8 text-center"
+                >
+                  No KYC submissions yet.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/30 text-xs text-muted-foreground">
+                        <th className="text-left py-2 px-3">User</th>
+                        <th className="text-left py-2 px-3">Doc Type</th>
+                        <th className="text-left py-2 px-3">Submitted</th>
+                        <th className="text-left py-2 px-3">Document</th>
+                        <th className="text-left py-2 px-3">Selfie</th>
+                        <th className="text-left py-2 px-3">Status</th>
+                        <th className="text-left py-2 px-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {kycSubmissions.map((kyc, i) => (
+                        <motion.tr
+                          key={kyc.username + String(i)}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="border-b border-border/20"
+                          data-ocid={`admin.kyc.row.item.${i + 1}`}
+                        >
+                          <td className="py-3 px-3">
+                            <div className="font-medium text-foreground">
+                              {kyc.username}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {kyc.email}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-muted-foreground capitalize">
+                            {(kyc.docType || "").replace("_", " ")}
+                          </td>
+                          <td className="py-3 px-3 text-muted-foreground text-xs">
+                            {kyc.submittedAt
+                              ? new Date(kyc.submittedAt).toLocaleString()
+                              : "—"}
+                          </td>
+                          <td className="py-3 px-3">
+                            {kyc.docPreview ? (
+                              <img
+                                src={kyc.docPreview}
+                                alt="document"
+                                className="w-14 h-14 object-cover rounded-lg border border-border/30"
+                              />
+                            ) : (
+                              <span className="text-muted-foreground text-xs">
+                                No file
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3">
+                            {kyc.selfiePreview ? (
+                              <img
+                                src={kyc.selfiePreview}
+                                alt="selfie"
+                                className="w-14 h-14 object-cover rounded-lg border border-border/30"
+                              />
+                            ) : (
+                              <span className="text-muted-foreground text-xs">
+                                No file
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3">
+                            {kyc.status === "pending" && (
+                              <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">
+                                Pending
+                              </Badge>
+                            )}
+                            {kyc.status === "verified" && (
+                              <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
+                                Verified
+                              </Badge>
+                            )}
+                            {kyc.status === "rejected" && (
+                              <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">
+                                Rejected
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="py-3 px-3">
+                            {kyc.status === "pending" && (
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  className="h-7 text-xs bg-green-600 hover:bg-green-700"
+                                  data-ocid={`admin.kyc.confirm_button.${i + 1}`}
+                                  onClick={() => {
+                                    const updated = {
+                                      ...kyc,
+                                      status: "verified",
+                                    };
+                                    localStorage.setItem(
+                                      `sce_kyc_${kyc.username}`,
+                                      JSON.stringify(updated),
+                                    );
+                                    // Update kycStatus in sce_users
+                                    const allUsrs = getSCEUsers();
+                                    const idx = allUsrs.findIndex(
+                                      (u: any) =>
+                                        u.username.toLowerCase() ===
+                                        kyc.username.toLowerCase(),
+                                    );
+                                    if (idx !== -1) {
+                                      allUsrs[idx].kycStatus = "verified";
+                                      localStorage.setItem(
+                                        "sce_users",
+                                        JSON.stringify(allUsrs),
+                                      );
+                                    }
+                                    setKycSubmissions((prev) =>
+                                      prev.map((k) =>
+                                        k.username === kyc.username
+                                          ? updated
+                                          : k,
+                                      ),
+                                    );
+                                    toast.success(
+                                      `KYC approved for ${kyc.username}`,
+                                    );
+                                  }}
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="h-7 text-xs"
+                                  data-ocid={`admin.kyc.delete_button.${i + 1}`}
+                                  onClick={() => {
+                                    const updated = {
+                                      ...kyc,
+                                      status: "rejected",
+                                    };
+                                    localStorage.setItem(
+                                      `sce_kyc_${kyc.username}`,
+                                      JSON.stringify(updated),
+                                    );
+                                    const allUsrs = getSCEUsers();
+                                    const idx = allUsrs.findIndex(
+                                      (u: any) =>
+                                        u.username.toLowerCase() ===
+                                        kyc.username.toLowerCase(),
+                                    );
+                                    if (idx !== -1) {
+                                      allUsrs[idx].kycStatus = "rejected";
+                                      localStorage.setItem(
+                                        "sce_users",
+                                        JSON.stringify(allUsrs),
+                                      );
+                                    }
+                                    setKycSubmissions((prev) =>
+                                      prev.map((k) =>
+                                        k.username === kyc.username
+                                          ? updated
+                                          : k,
+                                      ),
+                                    );
+                                    toast.error(
+                                      `KYC rejected for ${kyc.username}`,
+                                    );
+                                  }}
+                                >
+                                  Reject
+                                </Button>
+                              </div>
                             )}
                           </td>
                         </motion.tr>

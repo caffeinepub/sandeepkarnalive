@@ -7,38 +7,117 @@ import {
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 
-const SUGGESTIONS = [
-  {
-    action: "BUY" as const,
-    coin: "BTC",
-    reason: "Strong support at $92K. RSI oversold. Bullish divergence forming.",
-    confidence: 78,
-    color: "#00FF88",
-  },
-  {
-    action: "HOLD" as const,
-    coin: "ETH",
-    reason: "Consolidating near resistance. Wait for breakout confirmation.",
-    confidence: 62,
-    color: "#FFD700",
-  },
-  {
-    action: "SELL" as const,
-    coin: "SOL",
-    reason: "Overbought on 4H chart. Take profits near $180 resistance.",
-    confidence: 71,
-    color: "#FF3366",
-  },
-];
+type LivePrices = Record<string, { price: number; change: number }>;
+
+function buildSuggestions(prices: LivePrices) {
+  const btcPrice = prices.BTCUSDT?.price;
+  const ethPrice = prices.ETHUSDT?.price;
+  const solPrice = prices.SOLUSDT?.price;
+
+  const btcChange = prices.BTCUSDT?.change ?? 0;
+  const ethChange = prices.ETHUSDT?.change ?? 0;
+  const solChange = prices.SOLUSDT?.change ?? 0;
+
+  return [
+    {
+      action: btcChange > 0 ? ("BUY" as const) : ("HOLD" as const),
+      coin: "BTC",
+      price: btcPrice
+        ? `$${btcPrice.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+        : "Loading...",
+      reason:
+        btcChange > 1
+          ? `BTC up ${btcChange.toFixed(2)}% today. Bullish momentum. Consider entry.`
+          : btcChange < -1
+            ? `BTC down ${Math.abs(btcChange).toFixed(2)}% today. Wait for support confirmation.`
+            : `BTC consolidating. Current price ${btcPrice ? `$${btcPrice.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : ""}. Watch for breakout.`,
+      confidence: btcChange > 1 ? 75 : btcChange < -1 ? 60 : 65,
+      color: btcChange > 0 ? "#00FF88" : "#FFD700",
+    },
+    {
+      action: ethChange > 0 ? ("BUY" as const) : ("HOLD" as const),
+      coin: "ETH",
+      price: ethPrice
+        ? `$${ethPrice.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+        : "Loading...",
+      reason:
+        ethChange > 1
+          ? `ETH gaining ${ethChange.toFixed(2)}% — strong altcoin momentum.`
+          : `ETH at $${ethPrice ? ethPrice.toLocaleString("en-US", { maximumFractionDigits: 0 }) : "..."} — consolidating near resistance.`,
+      confidence: ethChange > 1 ? 70 : 58,
+      color: ethChange > 0 ? "#00F0FF" : "#FFD700",
+    },
+    {
+      action:
+        solChange < -1
+          ? ("SELL" as const)
+          : solChange > 1
+            ? ("BUY" as const)
+            : ("HOLD" as const),
+      coin: "SOL",
+      price: solPrice
+        ? `$${solPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+        : "Loading...",
+      reason:
+        solChange < -1
+          ? `SOL down ${Math.abs(solChange).toFixed(2)}% today. Consider taking profits.`
+          : solChange > 1
+            ? `SOL up ${solChange.toFixed(2)}% — strong performance. Watch resistance.`
+            : `SOL at $${solPrice ? solPrice.toFixed(2) : "..."} — ranging. Await direction.`,
+      confidence: 68,
+      color: solChange < -1 ? "#FF3366" : solChange > 1 ? "#A855F7" : "#FFD700",
+    },
+  ];
+}
 
 export function AIAssistant() {
   const [open, setOpen] = useState(false);
   const { isLoggedIn } = useAuth();
+  const [prices, setPrices] = useState<LivePrices>({});
+  const [updatedAt, setUpdatedAt] = useState("");
+
+  useEffect(() => {
+    async function fetchPrices() {
+      try {
+        const symbols = JSON.stringify([
+          "BTCUSDT",
+          "ETHUSDT",
+          "SOLUSDT",
+          "BNBUSDT",
+        ]);
+        const res = await fetch(
+          `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(symbols)}`,
+        );
+        const data = await res.json();
+        const mapped: LivePrices = {};
+        if (Array.isArray(data)) {
+          for (const t of data) {
+            mapped[t.symbol] = {
+              price: Number.parseFloat(t.lastPrice),
+              change: Number.parseFloat(t.priceChangePercent),
+            };
+          }
+        }
+        setPrices(mapped);
+        const now = new Date();
+        setUpdatedAt(
+          `${now.getHours()}:${String(now.getMinutes()).padStart(2, "0")}`,
+        );
+      } catch {
+        // silent fail
+      }
+    }
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (!isLoggedIn) return null;
+
+  const SUGGESTIONS = buildSuggestions(prices);
 
   return (
     <div className="fixed bottom-6 right-6 z-50">
@@ -86,7 +165,7 @@ export function AIAssistant() {
             {/* Suggestions */}
             <div className="p-3 space-y-2">
               <p className="text-xs text-white/40 px-1 mb-3">
-                AI Signal Analysis — Updated 5 min ago
+                Live Signal Analysis — Updated {updatedAt || "just now"}
               </p>
               {SUGGESTIONS.map((s, i) => {
                 const Icon =
@@ -115,6 +194,9 @@ export function AIAssistant() {
                         </div>
                         <span className="font-bold text-white text-sm">
                           {s.coin}
+                        </span>
+                        <span className="text-xs" style={{ color: s.color }}>
+                          {s.price}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">

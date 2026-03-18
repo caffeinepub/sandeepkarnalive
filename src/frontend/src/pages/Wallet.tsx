@@ -189,6 +189,19 @@ export function Wallet() {
   const { user, isLoggedIn } = useAuth();
   const { actor } = useActor();
 
+  const kycData = user
+    ? (() => {
+        try {
+          return JSON.parse(
+            localStorage.getItem(`sce_kyc_${user.username}`) || "null",
+          );
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+  const kycVerified = kycData?.status === "verified";
+
   const [depositForm, setDepositForm] = useState({
     currency: "USDT",
     amount: "",
@@ -582,6 +595,44 @@ export function Wallet() {
 
             {/* DEPOSIT */}
             <TabsContent value="deposit" className="p-6">
+              {!kycVerified && (
+                <div
+                  className="rounded-xl p-4 mb-5 flex items-start gap-3"
+                  style={{
+                    background: "rgba(255,215,0,0.06)",
+                    border: "1px solid rgba(255,215,0,0.3)",
+                  }}
+                  data-ocid="wallet.kyc.error_state"
+                >
+                  <Shield
+                    className="w-5 h-5 shrink-0 mt-0.5"
+                    style={{ color: "#FFD700" }}
+                  />
+                  <div className="flex-1">
+                    <p className="font-bold text-sm text-white mb-1">
+                      KYC Required
+                    </p>
+                    <p className="text-xs text-white/50 mb-2">
+                      Please complete KYC verification to use deposit/withdrawal
+                      features.
+                    </p>
+                    <a href="/kyc">
+                      <button
+                        type="button"
+                        data-ocid="wallet.kyc.primary_button"
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                        style={{
+                          background: "rgba(255,215,0,0.2)",
+                          border: "1px solid rgba(255,215,0,0.4)",
+                          color: "#FFD700",
+                        }}
+                      >
+                        Verify Identity →
+                      </button>
+                    </a>
+                  </div>
+                </div>
+              )}
               <form onSubmit={handleDeposit}>
                 <div className="space-y-4">
                   <div>
@@ -737,7 +788,7 @@ export function Wallet() {
                   <button
                     type="submit"
                     data-ocid="wallet.deposit.submit_button"
-                    disabled={depositLoading}
+                    disabled={depositLoading || !kycVerified}
                     className="w-full h-11 rounded-lg font-bold text-sm glow-btn-yellow disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {depositLoading ? (
@@ -758,6 +809,44 @@ export function Wallet() {
 
             {/* WITHDRAW */}
             <TabsContent value="withdraw" className="p-6">
+              {!kycVerified && (
+                <div
+                  className="rounded-xl p-4 mb-5 flex items-start gap-3"
+                  style={{
+                    background: "rgba(255,215,0,0.06)",
+                    border: "1px solid rgba(255,215,0,0.3)",
+                  }}
+                  data-ocid="wallet.kyc.error_state"
+                >
+                  <Shield
+                    className="w-5 h-5 shrink-0 mt-0.5"
+                    style={{ color: "#FFD700" }}
+                  />
+                  <div className="flex-1">
+                    <p className="font-bold text-sm text-white mb-1">
+                      KYC Required
+                    </p>
+                    <p className="text-xs text-white/50 mb-2">
+                      Please complete KYC verification to use deposit/withdrawal
+                      features.
+                    </p>
+                    <a href="/kyc">
+                      <button
+                        type="button"
+                        data-ocid="wallet.kyc.primary_button"
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                        style={{
+                          background: "rgba(255,215,0,0.2)",
+                          border: "1px solid rgba(255,215,0,0.4)",
+                          color: "#FFD700",
+                        }}
+                      >
+                        Verify Identity →
+                      </button>
+                    </a>
+                  </div>
+                </div>
+              )}
               <form onSubmit={handleWithdraw}>
                 <div className="space-y-4">
                   <div
@@ -897,7 +986,7 @@ export function Wallet() {
                   <button
                     type="submit"
                     data-ocid="wallet.withdraw.submit_button"
-                    disabled={withdrawLoading}
+                    disabled={!kycVerified || withdrawLoading}
                     className="w-full h-11 rounded-lg font-bold text-sm glow-btn-blue disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {withdrawLoading ? (
