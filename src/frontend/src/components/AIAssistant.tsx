@@ -109,6 +109,12 @@ export function AIAssistant() {
   const dragOffset = useRef({ x: 0, y: 0 });
   const windowRef = useRef<HTMLDivElement>(null);
 
+  // Bubble drag state
+  const [bubblePos, setBubblePos] = useState({ x: 0, y: 0 });
+  const [bubbleDragging, setBubbleDragging] = useState(false);
+  const bubbleDragOffset = useRef({ x: 0, y: 0 });
+  const bubbleMoved = useRef(false);
+
   // Fetch live prices using 24hr ticker for all coins at once
   useEffect(() => {
     async function fetchPrices() {
@@ -197,6 +203,65 @@ export function AIAssistant() {
     };
   }, [dragging]);
 
+  const onBubbleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      setBubbleDragging(true);
+      bubbleMoved.current = false;
+      bubbleDragOffset.current = {
+        x: e.clientX - (bubblePos.x || window.innerWidth - 100),
+        y: e.clientY - (bubblePos.y || window.innerHeight - 60),
+      };
+      e.preventDefault();
+    },
+    [bubblePos],
+  );
+
+  const onBubbleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      setBubbleDragging(true);
+      bubbleMoved.current = false;
+      const touch = e.touches[0];
+      bubbleDragOffset.current = {
+        x: touch.clientX - (bubblePos.x || window.innerWidth - 100),
+        y: touch.clientY - (bubblePos.y || window.innerHeight - 60),
+      };
+    },
+    [bubblePos],
+  );
+
+  useEffect(() => {
+    function onBubbleMouseMove(e: MouseEvent) {
+      if (!bubbleDragging) return;
+      bubbleMoved.current = true;
+      setBubblePos({
+        x: e.clientX - bubbleDragOffset.current.x,
+        y: e.clientY - bubbleDragOffset.current.y,
+      });
+    }
+    function onBubbleTouchMove(e: TouchEvent) {
+      if (!bubbleDragging) return;
+      bubbleMoved.current = true;
+      const touch = e.touches[0];
+      setBubblePos({
+        x: touch.clientX - bubbleDragOffset.current.x,
+        y: touch.clientY - bubbleDragOffset.current.y,
+      });
+    }
+    function onBubbleUp() {
+      setBubbleDragging(false);
+    }
+    window.addEventListener("mousemove", onBubbleMouseMove);
+    window.addEventListener("mouseup", onBubbleUp);
+    window.addEventListener("touchmove", onBubbleTouchMove, { passive: true });
+    window.addEventListener("touchend", onBubbleUp);
+    return () => {
+      window.removeEventListener("mousemove", onBubbleMouseMove);
+      window.removeEventListener("mouseup", onBubbleUp);
+      window.removeEventListener("touchmove", onBubbleTouchMove);
+      window.removeEventListener("touchend", onBubbleUp);
+    };
+  }, [bubbleDragging]);
+
   function sendMessage(text?: string) {
     const txt = (text ?? input).trim();
     if (!txt) return;
@@ -255,18 +320,38 @@ export function AIAssistant() {
             exit={{ scale: 0, opacity: 0 }}
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => setOpen(true)}
+            onClick={() => {
+              if (!bubbleMoved.current) setOpen(true);
+            }}
+            onMouseDown={onBubbleMouseDown}
+            onTouchStart={onBubbleTouchStart}
             data-ocid="ai.open_modal_button"
             className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold shadow-2xl"
-            style={{
-              position: "fixed",
-              right: 20,
-              bottom: 20,
-              background: "linear-gradient(135deg, #FFD700, #FFA500)",
-              color: "#0A0A0A",
-              zIndex: 9999,
-              boxShadow: "0 0 24px rgba(255,215,0,0.5)",
-            }}
+            style={
+              bubblePos.x !== 0 || bubblePos.y !== 0
+                ? {
+                    position: "fixed",
+                    left: bubblePos.x,
+                    top: bubblePos.y,
+                    right: "auto",
+                    bottom: "auto",
+                    background: "linear-gradient(135deg, #FFD700, #FFA500)",
+                    color: "#0A0A0A",
+                    zIndex: 9999,
+                    boxShadow: "0 0 24px rgba(255,215,0,0.5)",
+                    cursor: bubbleDragging ? "grabbing" : "grab",
+                  }
+                : {
+                    position: "fixed",
+                    right: 20,
+                    bottom: 20,
+                    background: "linear-gradient(135deg, #FFD700, #FFA500)",
+                    color: "#0A0A0A",
+                    zIndex: 9999,
+                    boxShadow: "0 0 24px rgba(255,215,0,0.5)",
+                    cursor: bubbleDragging ? "grabbing" : "grab",
+                  }
+            }
           >
             🤖 <span>AI Support</span>
           </motion.button>

@@ -1,33 +1,29 @@
-# SKCE - Sandeep Karn Crypto Empire
+# Sandeep Karna Crypto Empire
 
 ## Current State
-- FutureTrading page has sub-tabs: Chart, Overview, Data, Feed — but Overview/Data/Feed show nothing
-- P2P page has country selector but no country-specific bank/wallet details or USD→local currency conversion
-- AI Assistant is a floating bubble but not draggable, only shows generic signals, no customer support capability
+- AI Assistant has drag on chat window header only; bubble (closed state) is fixed position and not draggable
+- Spot Trading (Trading.tsx) uses `generateOrderBook` with Math.random — fake order book data
+- FutureTrading.tsx nav has TradFi tab but it goes nowhere (no route, no page)
+- Convert page uses real Binance API prices — OK
+- FutureTrading nav tabs (Convert, Spot, TradFi) are decorative buttons with no navigation
 
 ## Requested Changes (Diff)
 
 ### Add
-- FutureTrading: Overview tab — contract specs, funding rate, open interest, liquidation data
-- FutureTrading: Data tab — order book depth, recent trades list with real prices
-- FutureTrading: Feed tab — market news/announcements feed
-- P2P: Country selector shows country flag + bank payment methods (bank transfer, UPI for IN, eSewa for NP, etc.) + wallet options per country
-- P2P: 1 USD = X local currency live conversion (using exchange rate API or hardcoded realistic rates)
-- P2P: Sell option also shows 1 USD = local currency
-- AI Assistant: Draggable anywhere on screen (drag by header)
-- AI Assistant: Full customer support AI — answers questions about SKCE features, deposit/withdrawal, KYC, trading, P2P, wallet, referral, etc.
-- AI Assistant: Analyzes buy/sell messages from users and gives intelligent replies
-- AI Assistant: Ultra-fast responses with pre-built knowledge base about website
+- TradeFi page (/tradefi): Binance-style crypto earn/savings page — Flexible Savings, Locked Products, Crypto Loans, with live APY rates fetched from Binance savings API or realistic displayed rates per coin; user can subscribe with wallet balance
+- Route `/tradefi` in App.tsx
 
 ### Modify
-- AIAssistant.tsx: Add drag functionality, replace signal widget with full chat UI, add customer support knowledge base
-- FutureTrading.tsx: Add content for Overview/Data/Feed tabs
-- P2P.tsx: Add country-specific payment methods and currency conversion
+- AIAssistant.tsx: Make the floating bubble (closed state) also draggable — add bubblePos state, onBubbleMouseDown/TouchStart handlers so user can move it anywhere on screen
+- Trading.tsx (Spot): Replace `generateOrderBook` fake Math.random with real Binance `/api/v3/depth` API calls refreshing every 3s, same as FutureTrading DataTab does
+- FutureTrading.tsx: Nav tabs Convert→navigate to /convert, Spot→navigate to /trading, TradFi→navigate to /tradefi (use Link or router navigate)
 
 ### Remove
 - Nothing removed
 
 ## Implementation Plan
-1. Update FutureTrading.tsx — add Overview/Data/Feed tab content with real Binance data
-2. Update P2P.tsx — add country payment methods map + live USD conversion display
-3. Rebuild AIAssistant.tsx — draggable, full chat, SKCE knowledge base, buy/sell analysis
+1. Create src/frontend/src/pages/TradeFi.tsx — dark themed page with 3 sections: Flexible Savings (live APY per coin), Locked Staking products, Crypto Loans; fetches coin prices from Binance; user can click Subscribe/Stake with wallet balance deduction
+2. Update AIAssistant.tsx — add bubblePos state + drag handlers for the closed bubble button
+3. Update Trading.tsx — replace generateOrderBook with useEffect that fetches real Binance depth API
+4. Update FutureTrading.tsx — nav tabs become <Link> or use router.navigate to proper routes
+5. Update App.tsx — import TradeFi and add /tradefi route

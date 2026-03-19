@@ -22,16 +22,6 @@ const PAIRS = [
   { symbol: "BNBUSDT", display: "BNB/USDT", short: "BNB" },
 ];
 
-function generateOrderBook(basePrice: number, side: "buy" | "sell", count = 8) {
-  return Array.from({ length: count }, (_, i) => {
-    const offset = side === "sell" ? (i + 1) * 0.0002 : -(i + 1) * 0.0002;
-    const price = basePrice * (1 + offset);
-    const qty = (Math.random() * 2 + 0.01).toFixed(4);
-    const total = (price * Number.parseFloat(qty)).toFixed(2);
-    return { price: price.toFixed(2), qty, total };
-  });
-}
-
 export function Trading() {
   const { user, isLoggedIn, updateUser } = useAuth();
   const [activePair, setActivePair] = useState(PAIRS[0]);
@@ -76,10 +66,36 @@ export function Trading() {
     return () => clearInterval(interval);
   }, [activePair.symbol]);
 
-  const buyOrders =
-    currentPrice > 0 ? generateOrderBook(currentPrice, "buy") : [];
-  const sellOrders =
-    currentPrice > 0 ? generateOrderBook(currentPrice, "sell") : [];
+  const [buyOrders, setBuyOrders] = useState<
+    { price: string; qty: string; total: string }[]
+  >([]);
+  const [sellOrders, setSellOrders] = useState<
+    { price: string; qty: string; total: string }[]
+  >([]);
+
+  useEffect(() => {
+    async function fetchDepth() {
+      try {
+        const res = await fetch(
+          `https://api.binance.com/api/v3/depth?symbol=${activePair.symbol}&limit=10`,
+        );
+        const data = await res.json();
+        const fmt = (arr: [string, string][]) =>
+          arr.map(([p, q]) => ({
+            price: Number(p).toFixed(2),
+            qty: Number(q).toFixed(4),
+            total: (Number(p) * Number(q)).toFixed(2),
+          }));
+        setBuyOrders(fmt(data.bids || []));
+        setSellOrders(fmt(data.asks || []));
+      } catch {
+        /* ignore */
+      }
+    }
+    fetchDepth();
+    const iv = setInterval(fetchDepth, 3000);
+    return () => clearInterval(iv);
+  }, [activePair.symbol]);
 
   async function handleExecute() {
     if (!isLoggedIn) {

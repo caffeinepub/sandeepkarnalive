@@ -31,6 +31,7 @@ import { Profile } from "./pages/Profile";
 import { Referral } from "./pages/Referral";
 import { Signals } from "./pages/Signals";
 import { Signup } from "./pages/Signup";
+import { TradeFi } from "./pages/TradeFi";
 import { Trading } from "./pages/Trading";
 import { Vlog } from "./pages/Vlog";
 import { Wallet } from "./pages/Wallet";
@@ -153,6 +154,11 @@ const routeTree = rootRoute.addChildren([
     getParentRoute: () => rootRoute,
     path: "/convert",
     component: Convert,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/tradefi",
+    component: TradeFi,
   }),
   createRoute({
     getParentRoute: () => rootRoute,

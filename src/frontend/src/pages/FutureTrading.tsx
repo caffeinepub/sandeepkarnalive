@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
   BarChart2,
@@ -539,6 +539,7 @@ function FeedTab() {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function FutureTrading() {
+  const navigate = useNavigate();
   const { isLoggedIn, user, updateUser } = useAuth();
 
   const [pair, setPair] = useState(TRADING_PAIRS[0]);
@@ -734,6 +735,11 @@ export function FutureTrading() {
                 key={tab}
                 type="button"
                 className="px-3 py-1 text-sm whitespace-nowrap flex-shrink-0"
+                onClick={() => {
+                  if (tab === "Convert") navigate({ to: "/convert" });
+                  else if (tab === "Spot") navigate({ to: "/trading" });
+                  else if (tab === "TradFi") navigate({ to: "/tradefi" });
+                }}
                 style={{
                   color: tab === "Futures" ? "#F5F6F8" : "#5E616A",
                   fontWeight: tab === "Futures" ? 700 : 400,
