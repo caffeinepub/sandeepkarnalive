@@ -24,18 +24,25 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 
-// ─── TradingView Chart ───────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
+type Candle = {
+  t: number;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
+};
 type Interval = "1m" | "15m" | "1h" | "4h" | "1D";
 type Indicator =
   | "MA"
   | "EMA"
-  | "MACD"
-  | "Mark"
   | "BOLL"
+  | "Mark"
   | "SAR"
   | "MAVOL"
+  | "MACD"
   | "KL";
-
 type OrderSide = "LONG" | "SHORT";
 
 const TRADING_PAIRS = [
@@ -57,31 +64,272 @@ const INDICATORS: Indicator[] = [
   "KL",
 ];
 
-function TradingViewChart({
-  symbol,
-  interval,
-}: { symbol: string; interval: string }) {
-  const intervalMap: Record<string, string> = {
-    "1m": "1",
-    "15m": "15",
-    "1h": "60",
-    "4h": "240",
-    "1D": "D",
-  };
-  const tvInterval = intervalMap[interval] || "1";
-  const src = `https://s.tradingview.com/widgetembed/?frameElementId=tv_chart&symbol=BINANCE:${symbol}&interval=${tvInterval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1&saveimage=1&toolbarbg=0B0B0D&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=en&hide_top_toolbar=0`;
+function calcMA(candles: Candle[], period = 20): (number | null)[] {
+  return candles.map((_, i) => {
+    if (i < period - 1) return null;
+    return (
+      candles.slice(i - period + 1, i + 1).reduce((a, c) => a + c.c, 0) / period
+    );
+  });
+}
+
+function calcEMA(candles: Candle[], period = 12): (number | null)[] {
+  const k = 2 / (period + 1);
+  const result: (number | null)[] = [];
+  let ema: number | null = null;
+  for (const c of candles) {
+    if (ema === null) {
+      ema = c.c;
+      result.push(null);
+    } else {
+      ema = c.c * k + ema * (1 - k);
+      result.push(ema);
+    }
+  }
+  return result;
+}
+
+// ─── Canvas Chart ─────────────────────────────────────────────────────────────
+function CandleChart({
+  candles,
+  indicators,
+  markPrice,
+}: { candles: Candle[]; indicators: Indicator[]; markPrice: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || candles.length < 2) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // BG
+    ctx.fillStyle = "#0B0B0D";
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = "#1A1C22";
+    ctx.lineWidth = 0.5;
+    for (let i = 1; i < 7; i++) {
+      ctx.beginPath();
+      ctx.moveTo(0, (H / 7) * i);
+      ctx.lineTo(W, (H / 7) * i);
+      ctx.stroke();
+    }
+    for (let i = 1; i < 6; i++) {
+      ctx.beginPath();
+      ctx.moveTo((W / 6) * i, 0);
+      ctx.lineTo((W / 6) * i, H);
+      ctx.stroke();
+    }
+
+    // SKCE watermark (like BYBIT)
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = "#AAAAAA";
+    ctx.font = "bold 48px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("SKCE", W / 2, H / 2);
+    ctx.restore();
+
+    const pad = { l: 8, r: 72, t: 20, b: 28 };
+    const chartW = W - pad.l - pad.r;
+    const chartH = H - pad.t - pad.b;
+    const prices = candles.flatMap((c) => [c.h, c.l]);
+    const minP = Math.min(...prices);
+    const maxP = Math.max(...prices);
+    const range = maxP - minP || 1;
+    const spacing = chartW / candles.length;
+    const candleW = Math.max(2, spacing * 0.6);
+    const toX = (i: number) => pad.l + i * spacing + spacing / 2;
+    const toY = (p: number) => pad.t + chartH - ((p - minP) / range) * chartH;
+
+    // Volume bars
+    const maxVol = Math.max(...candles.map((c) => c.v));
+    for (let i = 0; i < candles.length; i++) {
+      const c = candles[i];
+      const volH = (c.v / maxVol) * 35;
+      ctx.fillStyle =
+        c.c >= c.o ? "rgba(33,197,122,0.15)" : "rgba(226,74,74,0.15)";
+      ctx.fillRect(toX(i) - candleW / 2, H - pad.b - volH, candleW, volH);
+    }
+
+    // MA
+    if (indicators.includes("MA")) {
+      const ma = calcMA(candles, 20);
+      ctx.strokeStyle = "#D9A24A";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      let s = false;
+      for (let i = 0; i < ma.length; i++) {
+        if (!ma[i]) continue;
+        const x = toX(i);
+        const y = toY(ma[i]!);
+        if (!s) {
+          ctx.moveTo(x, y);
+          s = true;
+        } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // EMA
+    if (indicators.includes("EMA")) {
+      const ema = calcEMA(candles, 12);
+      ctx.strokeStyle = "#a78bfa";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      let s = false;
+      for (let i = 0; i < ema.length; i++) {
+        if (!ema[i]) continue;
+        const x = toX(i);
+        const y = toY(ema[i]!);
+        if (!s) {
+          ctx.moveTo(x, y);
+          s = true;
+        } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // Candles
+    for (let i = 0; i < candles.length; i++) {
+      const c = candles[i];
+      const x = toX(i);
+      const isBull = c.c >= c.o;
+      const color = isBull ? "#21C57A" : "#E24A4A";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, toY(c.h));
+      ctx.lineTo(x, toY(c.l));
+      ctx.stroke();
+      const bodyTop = toY(Math.max(c.o, c.c));
+      const bodyH = Math.max(1, toY(Math.min(c.o, c.c)) - bodyTop);
+      ctx.fillStyle = color;
+      ctx.fillRect(x - candleW / 2, bodyTop, candleW, bodyH);
+    }
+
+    // Peak price label near top candle
+    const maxCandle = candles.reduce((a, b) => (b.h > a.h ? b : a));
+    const peakIdx = candles.indexOf(maxCandle);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(maxCandle.h.toFixed(2), toX(peakIdx), toY(maxCandle.h) - 4);
+
+    // Right price axis labels
+    const steps = 5;
+    ctx.fillStyle = "#8A8F98";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "left";
+    for (let i = 0; i <= steps; i++) {
+      const p = minP + (range / steps) * i;
+      const y = toY(p);
+      ctx.fillText(p.toFixed(p > 1000 ? 1 : 2), W - pad.r + 4, y + 3);
+    }
+
+    // Time axis labels
+    ctx.fillStyle = "#8A8F98";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "center";
+    const step = Math.floor(candles.length / 6);
+    for (let i = 0; i < candles.length; i += step) {
+      const d = new Date(candles[i].t);
+      ctx.fillText(
+        `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`,
+        toX(i),
+        H - 8,
+      );
+    }
+
+    // Mark price label inside chart (top-left)
+    if (markPrice > 0) {
+      ctx.fillStyle = "#D9A24A";
+      ctx.font = "11px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(`MarkPrice: ${markPrice.toFixed(2)}`, pad.l + 4, pad.t + 12);
+    }
+
+    // Last price dashed line
+    if (candles.length > 0) {
+      const last = candles[candles.length - 1];
+      const lastY = toY(last.c);
+      ctx.strokeStyle =
+        last.c >= last.o ? "rgba(33,197,122,0.5)" : "rgba(226,74,74,0.5)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(pad.l, lastY);
+      ctx.lineTo(W - pad.r, lastY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Right-edge price callout bubble
+      const bubbleW = pad.r - 3;
+      const bubbleH = 28;
+      ctx.fillStyle = "#2A2D34";
+      const bx = W - pad.r + 2;
+      const by = lastY - bubbleH / 2;
+      const radius = 4;
+      ctx.beginPath();
+      ctx.moveTo(bx + radius, by);
+      ctx.lineTo(bx + bubbleW - radius, by);
+      ctx.quadraticCurveTo(bx + bubbleW, by, bx + bubbleW, by + radius);
+      ctx.lineTo(bx + bubbleW, by + bubbleH - radius);
+      ctx.quadraticCurveTo(
+        bx + bubbleW,
+        by + bubbleH,
+        bx + bubbleW - radius,
+        by + bubbleH,
+      );
+      ctx.lineTo(bx + radius, by + bubbleH);
+      ctx.quadraticCurveTo(bx, by + bubbleH, bx, by + bubbleH - radius);
+      ctx.lineTo(bx, by + radius);
+      ctx.quadraticCurveTo(bx, by, bx + radius, by);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = "bold 9px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(last.c.toFixed(2), bx + bubbleW / 2, lastY - 2);
+      ctx.fillStyle = "#8A8F98";
+      ctx.font = "8px monospace";
+      const now = new Date();
+      ctx.fillText(
+        `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`,
+        bx + bubbleW / 2,
+        lastY + 8,
+      );
+    }
+  }, [candles, indicators, markPrice]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ro = new ResizeObserver(() => {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+      draw();
+    });
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [draw]);
+
+  useEffect(() => {
+    draw();
+  }, [draw]);
+
   return (
-    <iframe
-      key={`${symbol}-${tvInterval}`}
-      src={src}
-      style={{
-        width: "100%",
-        height: "100%",
-        border: "none",
-        background: "#0B0B0D",
-      }}
-      allow="fullscreen"
-      title="TradingView Chart"
+    <canvas
+      ref={canvasRef}
+      className="w-full h-full"
+      style={{ display: "block" }}
     />
   );
 }
@@ -217,74 +465,72 @@ function OverviewTab({
 }
 
 // ─── Data Tab ────────────────────────────────────────────────────────────────
-function DataTab({ symbol }: { symbol: string }) {
+function DataTab({ price }: { price: number }) {
   const [trades, setTrades] = useState<
     Array<{ price: number; size: number; time: string; side: "buy" | "sell" }>
   >([]);
-  const [asks, setAsks] = useState<
-    Array<{ price: number; size: number; total: number }>
-  >([]);
-  const [bids, setBids] = useState<
-    Array<{ price: number; size: number; total: number }>
-  >([]);
-
-  const fetchData = useCallback(async () => {
-    try {
-      const [depthRes, tradesRes] = await Promise.all([
-        fetch(`https://api.binance.com/api/v3/depth?symbol=${symbol}&limit=15`),
-        fetch(
-          `https://api.binance.com/api/v3/trades?symbol=${symbol}&limit=20`,
-        ),
-      ]);
-      const depthData = await depthRes.json();
-      const tradesData = await tradesRes.json();
-
-      const newAsks = (depthData.asks as [string, string][])
-        .slice(0, 10)
-        .map(([p, q]) => ({
-          price: Number.parseFloat(p),
-          size: Number.parseFloat(q),
-          total: Number.parseFloat(p) * Number.parseFloat(q),
-        }));
-      const newBids = (depthData.bids as [string, string][])
-        .slice(0, 10)
-        .map(([p, q]) => ({
-          price: Number.parseFloat(p),
-          size: Number.parseFloat(q),
-          total: Number.parseFloat(p) * Number.parseFloat(q),
-        }));
-      setAsks(newAsks);
-      setBids(newBids);
-
-      const newTrades = (
-        tradesData as Array<{
-          id: number;
-          price: string;
-          qty: string;
-          time: number;
-          isBuyerMaker: boolean;
-        }>
-      ).map((t) => ({
-        price: Number.parseFloat(t.price),
-        size: Number.parseFloat(t.qty),
-        time: new Date(t.time).toLocaleTimeString("en", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }),
-        side: t.isBuyerMaker ? ("sell" as const) : ("buy" as const),
-      }));
-      setTrades(newTrades);
-    } catch {
-      /* ignore */
-    }
-  }, [symbol]);
 
   useEffect(() => {
-    fetchData();
-    const t = setInterval(fetchData, 3000);
+    function genTrades() {
+      const arr: Array<{
+        price: number;
+        size: number;
+        time: string;
+        side: "buy" | "sell";
+      }> = [];
+      const now = Date.now();
+      for (let i = 0; i < 20; i++) {
+        const side = Math.random() > 0.5 ? ("buy" as const) : ("sell" as const);
+        const p =
+          price > 0 ? price * (1 + (Math.random() - 0.5) * 0.004) : 2000;
+        arr.push({
+          price: p,
+          size: +(Math.random() * 5 + 0.01).toFixed(3),
+          time: new Date(now - i * 2000).toLocaleTimeString("en", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }),
+          side,
+        });
+      }
+      setTrades(arr);
+    }
+    if (price > 0) genTrades();
+    const t = setInterval(() => {
+      if (price > 0) {
+        setTrades((prev) => {
+          const side =
+            Math.random() > 0.5 ? ("buy" as const) : ("sell" as const);
+          const p = price * (1 + (Math.random() - 0.5) * 0.004);
+          const newTrade = {
+            price: p,
+            size: +(Math.random() * 5 + 0.01).toFixed(3),
+            time: new Date().toLocaleTimeString("en", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }),
+            side,
+          };
+          return [newTrade, ...prev.slice(0, 19)];
+        });
+      }
+    }, 2000);
     return () => clearInterval(t);
-  }, [fetchData]);
+  }, [price]);
+
+  const baseP = price > 0 ? price : 2000;
+  const asks = Array.from({ length: 10 }, (_, i) => ({
+    price: baseP * (1 + (10 - i) * 0.0005),
+    size: +(Math.random() * 8 + 0.5).toFixed(3),
+    total: +(Math.random() * 50 + 1).toFixed(2),
+  }));
+  const bids = Array.from({ length: 10 }, (_, i) => ({
+    price: baseP * (1 - (i + 1) * 0.0005),
+    size: +(Math.random() * 8 + 0.5).toFixed(3),
+    total: +(Math.random() * 50 + 1).toFixed(2),
+  }));
 
   return (
     <div className="h-full flex gap-0 overflow-hidden">
@@ -358,12 +604,8 @@ function DataTab({ symbol }: { symbol: string }) {
               className="text-sm font-bold font-mono"
               style={{ color: "#FFD700" }}
             >
-              {asks.length > 0 && bids.length > 0
-                ? (
-                    ((asks[asks.length - 1]?.price ?? 0) +
-                      (bids[0]?.price ?? 0)) /
-                    2
-                  ).toLocaleString("en-US", {
+              {baseP > 0
+                ? baseP.toLocaleString("en-US", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })
@@ -554,6 +796,7 @@ export function FutureTrading() {
   const [priceFlash, setPriceFlash] = useState<"up" | "down" | null>(null);
   const prevPrice = useRef(0);
 
+  const [candles, setCandles] = useState<Candle[]>([]);
   const [activeInterval, setActiveInterval] = useState<Interval>("1m");
   const [activeIndicators, setActiveIndicators] = useState<Indicator[]>([
     "Mark",
@@ -580,15 +823,7 @@ export function FutureTrading() {
           prevPrice.current = p;
           return newPrice;
         });
-        try {
-          const markRes = await fetch(
-            `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${pair.binance}`,
-          );
-          const markData = await markRes.json();
-          setMarkPrice(Number.parseFloat(markData.markPrice));
-        } catch {
-          setMarkPrice(newPrice);
-        }
+        setMarkPrice(newPrice * (1 + (Math.random() - 0.5) * 0.0001));
         setPrice24h({
           high: Number.parseFloat(d.highPrice),
           low: Number.parseFloat(d.lowPrice),
@@ -608,6 +843,38 @@ export function FutureTrading() {
     const iv = setInterval(fetch24h, 8000);
     return () => clearInterval(iv);
   }, [pair]);
+
+  useEffect(() => {
+    async function fetchKlines() {
+      try {
+        const intervalMap: Record<Interval, string> = {
+          "1m": "1m",
+          "15m": "15m",
+          "1h": "1h",
+          "4h": "4h",
+          "1D": "1d",
+        };
+        const res = await fetch(
+          `https://api.binance.com/api/v3/klines?symbol=${pair.binance}&interval=${intervalMap[activeInterval]}&limit=100`,
+        );
+        const data = await res.json();
+        const parsed: Candle[] = (data as any[]).map((item) => ({
+          t: Number(item[0]),
+          o: Number.parseFloat(item[1]),
+          h: Number.parseFloat(item[2]),
+          l: Number.parseFloat(item[3]),
+          c: Number.parseFloat(item[4]),
+          v: Number.parseFloat(item[5]),
+        }));
+        setCandles(parsed);
+      } catch {
+        setCandles([]);
+      }
+    }
+    fetchKlines();
+    const iv = setInterval(fetchKlines, 30000);
+    return () => clearInterval(iv);
+  }, [pair, activeInterval]);
 
   function toggleIndicator(ind: Indicator) {
     setActiveIndicators((prev) =>
@@ -729,23 +996,25 @@ export function FutureTrading() {
 
           {/* Nav tabs */}
           <div className="flex items-center gap-0 flex-1 overflow-x-auto">
-            {(["Convert", "Spot", "Futures", "TradFi"] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                className="px-3 py-1 text-sm whitespace-nowrap flex-shrink-0"
-                style={{
-                  color: tab === "Futures" ? "#F5F6F8" : "#5E616A",
-                  fontWeight: tab === "Futures" ? 700 : 400,
-                  borderBottom:
-                    tab === "Futures"
-                      ? "2px solid #F5F6F8"
-                      : "2px solid transparent",
-                }}
-              >
-                {tab}
-              </button>
-            ))}
+            {(["Convert", "Spot", "Futures", "Options", "TradFi"] as const).map(
+              (tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className="px-3 py-1 text-sm whitespace-nowrap flex-shrink-0"
+                  style={{
+                    color: tab === "Futures" ? "#F5F6F8" : "#5E616A",
+                    fontWeight: tab === "Futures" ? 700 : 400,
+                    borderBottom:
+                      tab === "Futures"
+                        ? "2px solid #F5F6F8"
+                        : "2px solid transparent",
+                  }}
+                >
+                  {tab}
+                </button>
+              ),
+            )}
           </div>
         </div>
       </header>
@@ -1016,13 +1285,25 @@ export function FutureTrading() {
 
       {/* ── Section 7: Chart / Overview / Data / Feed ── */}
       <div className="flex-1 min-h-0" style={{ background: "#0B0B0D" }}>
-        {activeSubTab === "Chart" && (
-          <TradingViewChart symbol={pair.binance} interval={activeInterval} />
-        )}
+        {activeSubTab === "Chart" &&
+          (candles.length > 0 ? (
+            <CandleChart
+              candles={candles}
+              indicators={activeIndicators}
+              markPrice={markPrice}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <Activity
+                className="w-6 h-6 animate-pulse"
+                style={{ color: "#4A4E58" }}
+              />
+            </div>
+          ))}
         {activeSubTab === "Overview" && (
           <OverviewTab price={price} markPrice={markPrice} pair={pair} />
         )}
-        {activeSubTab === "Data" && <DataTab symbol={pair.binance} />}
+        {activeSubTab === "Data" && <DataTab price={price} />}
         {activeSubTab === "Feed" && <FeedTab />}
       </div>
 

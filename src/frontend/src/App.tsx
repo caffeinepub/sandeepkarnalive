@@ -15,6 +15,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { Admin } from "./pages/Admin";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { Blog } from "./pages/Blog";
+import { Convert } from "./pages/Convert";
 import { Crypto } from "./pages/Crypto";
 import { Earn } from "./pages/Earn";
 import { FutureTrading } from "./pages/FutureTrading";
@@ -25,6 +26,7 @@ import { Login } from "./pages/Login";
 import { MemeCoinTrading } from "./pages/MemeCoinTrading";
 import { News } from "./pages/News";
 import { P2P } from "./pages/P2P";
+import { Positions } from "./pages/Positions";
 import { Profile } from "./pages/Profile";
 import { Referral } from "./pages/Referral";
 import { Signals } from "./pages/Signals";
@@ -141,6 +143,16 @@ const routeTree = rootRoute.addChildren([
     getParentRoute: () => rootRoute,
     path: "/kyc",
     component: KYC,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/positions",
+    component: Positions,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/convert",
+    component: Convert,
   }),
   createRoute({
     getParentRoute: () => rootRoute,

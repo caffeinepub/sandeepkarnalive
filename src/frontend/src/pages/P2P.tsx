@@ -8,249 +8,435 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  CheckCircle,
-  Clock,
-  Filter,
-  Lock,
-  MessageCircle,
+  MessageSquare,
+  Plus,
   Send,
-  Shield,
+  ShieldCheck,
   Star,
+  Timer,
   Upload,
+  X,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 
-const COUNTRY_PAYMENT_DATA: Record<
+// ─── Types ───────────────────────────────────────────────────────────────────
+type P2PAd = {
+  id: string;
+  type: "buy" | "sell";
+  coin: "USDT" | "BTC" | "ETH";
+  price: number;
+  minAmount: number;
+  maxAmount: number;
+  paymentMethods: string[];
+  country: string;
+  currency: string;
+  postedBy: string;
+  userId: string;
+  rating: number;
+  completionRate: number;
+  trades: number;
+  createdAt: string;
+  status: "active" | "suspended";
+};
+
+type ChatMessage = { from: string; text: string; time: string };
+
+// ─── Country Data ─────────────────────────────────────────────────────────────
+const COUNTRY_DATA: Record<
   string,
-  {
-    flag: string;
-    name: string;
-    currency: string;
-    rate: number;
-    payments: string[];
-    banks: string[];
-  }
+  { currency: string; rate: number; methods: string[] }
 > = {
-  IN: {
-    flag: "🇮🇳",
-    name: "India",
+  India: {
     currency: "INR",
-    rate: 83.5,
-    payments: ["Bank Transfer", "UPI", "PhonePe", "Google Pay", "IMPS"],
-    banks: ["State Bank of India", "HDFC Bank", "ICICI Bank", "Axis Bank"],
+    rate: 83.2,
+    methods: ["UPI", "Bank Transfer", "IMPS", "NEFT"],
   },
-  NP: {
-    flag: "🇳🇵",
-    name: "Nepal",
+  Nepal: {
     currency: "NPR",
-    rate: 133.2,
-    payments: ["Bank Transfer", "eSewa", "Khalti", "IME Pay"],
-    banks: ["Nepal Bank", "Everest Bank", "NMB Bank", "Nabil Bank"],
+    rate: 133.5,
+    methods: ["eSewa", "Khalti", "Bank Transfer", "IME Pay"],
   },
-  US: {
-    flag: "🇺🇸",
-    name: "USA",
+  Pakistan: {
+    currency: "PKR",
+    rate: 278,
+    methods: ["JazzCash", "EasyPaisa", "Bank Transfer"],
+  },
+  USA: {
     currency: "USD",
     rate: 1,
-    payments: ["Bank Transfer", "Wire Transfer", "ACH", "Zelle"],
-    banks: ["Chase Bank", "Bank of America", "Wells Fargo", "Citibank"],
+    methods: ["PayPal", "Zelle", "Bank Transfer", "Wire"],
   },
-  PK: {
-    flag: "🇵🇰",
-    name: "Pakistan",
-    currency: "PKR",
-    rate: 278.5,
-    payments: ["Bank Transfer", "JazzCash", "EasyPaisa", "HBL Pay"],
-    banks: ["HBL", "UBL", "MCB Bank", "Allied Bank"],
-  },
-  BD: {
-    flag: "🇧🇩",
-    name: "Bangladesh",
-    currency: "BDT",
-    rate: 110.2,
-    payments: ["Bank Transfer", "bKash", "Nagad", "Rocket"],
-    banks: ["Dutch-Bangla Bank", "BRAC Bank", "Islami Bank", "Prime Bank"],
-  },
-  AE: {
-    flag: "🇦🇪",
-    name: "UAE",
-    currency: "AED",
-    rate: 3.67,
-    payments: ["Bank Transfer", "Wire Transfer", "SWIFT"],
-    banks: ["Emirates NBD", "ADCB", "Dubai Islamic Bank", "FAB"],
-  },
-  GB: {
-    flag: "🇬🇧",
-    name: "UK",
+  UK: {
     currency: "GBP",
     rate: 0.79,
-    payments: ["Bank Transfer", "Faster Payments", "CHAPS", "PayPal"],
-    banks: ["Barclays", "HSBC", "Lloyds", "NatWest"],
+    methods: ["Bank Transfer", "PayPal", "Faster Payments"],
   },
-  CN: {
-    flag: "🇨🇳",
-    name: "China",
-    currency: "CNY",
-    rate: 7.24,
-    payments: ["Bank Transfer", "Alipay", "WeChat Pay", "UnionPay"],
-    banks: [
-      "ICBC",
-      "Bank of China",
-      "China Construction Bank",
-      "Agricultural Bank",
-    ],
+  UAE: {
+    currency: "AED",
+    rate: 3.67,
+    methods: ["Bank Transfer", "Crypto", "PayPal"],
+  },
+  Bangladesh: {
+    currency: "BDT",
+    rate: 110,
+    methods: ["bKash", "Nagad", "Bank Transfer"],
   },
 };
 
-const P2P_ADS = [
-  {
-    id: 1,
-    seller: "CryptoKing_SK",
-    avatar: "CK",
-    rating: 4.9,
-    level: "Expert Trader",
-    levelColor: "#FFD700",
-    trades: 1247,
-    completion: 98,
-    coin: "USDT",
-    price: 1.0,
-    available: 5000,
-    min: 50,
-    max: 5000,
-    methods: ["Bank Transfer", "UPI"],
-    currency: "USD",
-  },
-  {
-    id: 2,
-    seller: "BlockMaster99",
-    avatar: "BM",
-    rating: 4.7,
-    level: "Pro Seller",
-    levelColor: "#00F0FF",
-    trades: 892,
-    completion: 96,
-    coin: "USDT",
-    price: 1.0,
-    available: 3200,
-    min: 20,
-    max: 3200,
-    methods: ["UPI", "International"],
-    currency: "USD",
-  },
-  {
-    id: 3,
-    seller: "TradePro_India",
-    avatar: "TP",
-    rating: 4.8,
-    level: "Verified Trader",
-    levelColor: "#00FF88",
-    trades: 2103,
-    completion: 99,
-    coin: "USDT",
-    price: 1.0,
-    available: 10000,
-    min: 100,
-    max: 10000,
-    methods: ["Bank Transfer"],
-    currency: "USD",
-  },
-  {
-    id: 4,
-    seller: "FastCrypto_TX",
-    avatar: "FC",
-    rating: 4.5,
-    level: "Active Seller",
-    levelColor: "#8888AA",
-    trades: 341,
-    completion: 93,
-    coin: "USDT",
-    price: 0.99,
-    available: 800,
-    min: 10,
-    max: 800,
-    methods: ["UPI", "Bank Transfer"],
-    currency: "USD",
-  },
+const ALL_PAYMENT_METHODS = [
+  "Bank Transfer",
+  "UPI",
+  "eSewa",
+  "JazzCash",
+  "PayPal",
+  "Crypto",
+  "IMPS",
+  "Khalti",
+  "Zelle",
+  "bKash",
+  "Nagad",
 ];
 
-type ChatMessage = {
-  id: number;
-  from: "buyer" | "seller";
-  text: string;
-  time: string;
-};
+const COINS: ("USDT" | "BTC" | "ETH")[] = ["USDT", "BTC", "ETH"];
 
-const INITIAL_CHAT: ChatMessage[] = [
-  {
-    id: 1,
-    from: "seller",
-    text: "Hello! I'm ready to trade. Please complete payment within 15 minutes.",
-    time: "14:22",
-  },
-  {
-    id: 2,
-    from: "seller",
-    text: "Send payment to bank account ending in 4523.",
-    time: "14:22",
-  },
-];
+function loadAds(): P2PAd[] {
+  try {
+    return JSON.parse(localStorage.getItem("skce_p2p_ads") || "[]");
+  } catch {
+    return [];
+  }
+}
 
-export function P2P() {
-  const { isLoggedIn, user } = useAuth();
+function saveAds(ads: P2PAd[]) {
+  localStorage.setItem("skce_p2p_ads", JSON.stringify(ads));
+}
 
-  const kycData = user
-    ? (() => {
-        try {
-          return JSON.parse(
-            localStorage.getItem(`sce_kyc_${user.username}`) || "null",
-          );
-        } catch {
-          return null;
-        }
-      })()
-    : null;
-  const kycVerified = kycData?.status === "verified";
-  const [tab, setTab] = useState<"BUY" | "SELL">("BUY");
-  const [_currency, _setCurrency] = useState("USD");
-  const [payMethod, setPayMethod] = useState("all");
-  const [selectedCountry, setSelectedCountry] = useState("IN");
-  const [selectedPaymentChip, setSelectedPaymentChip] = useState("");
-  const [tradeAmount, setTradeAmount] = useState("");
-  const [selectedAd, setSelectedAd] = useState<(typeof P2P_ADS)[0] | null>(
-    null,
+function loadDisputes() {
+  try {
+    return JSON.parse(localStorage.getItem("skce_p2p_disputes") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveDisputes(d: unknown[]) {
+  localStorage.setItem("skce_p2p_disputes", JSON.stringify(d));
+}
+
+// ─── PostAdModal ──────────────────────────────────────────────────────────────
+function PostAdModal({
+  open,
+  onClose,
+  onPost,
+}: { open: boolean; onClose: () => void; onPost: (ad: P2PAd) => void }) {
+  const { user } = useAuth();
+  const [form, setForm] = useState({
+    type: "sell" as "buy" | "sell",
+    coin: "USDT" as "USDT" | "BTC" | "ETH",
+    price: "",
+    minAmount: "",
+    maxAmount: "",
+    country: "India",
+    paymentMethods: [] as string[],
+  });
+
+  const countryInfo = COUNTRY_DATA[form.country];
+
+  function toggleMethod(m: string) {
+    setForm((f) => ({
+      ...f,
+      paymentMethods: f.paymentMethods.includes(m)
+        ? f.paymentMethods.filter((x) => x !== m)
+        : [...f.paymentMethods, m],
+    }));
+  }
+
+  function submit() {
+    if (!form.price || !form.minAmount || !form.maxAmount) {
+      toast.error("Fill all required fields");
+      return;
+    }
+    if (!form.paymentMethods.length) {
+      toast.error("Select at least one payment method");
+      return;
+    }
+    const ad: P2PAd = {
+      id: Date.now().toString(),
+      type: form.type,
+      coin: form.coin,
+      price: Number.parseFloat(form.price),
+      minAmount: Number.parseFloat(form.minAmount),
+      maxAmount: Number.parseFloat(form.maxAmount),
+      paymentMethods: form.paymentMethods,
+      country: form.country,
+      currency: countryInfo.currency,
+      postedBy: user?.username || user?.email?.split("@")[0] || "Anonymous",
+      userId: user?.email || "unknown",
+      rating: 4.8,
+      completionRate: 98,
+      trades: 0,
+      createdAt: new Date().toISOString(),
+      status: "active",
+    };
+    onPost(ad);
+    onClose();
+    toast.success("Ad posted successfully!");
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        className="max-w-lg max-h-[90vh] overflow-y-auto"
+        style={{
+          background: "#111318",
+          border: "1px solid rgba(255,215,0,0.15)",
+        }}
+        data-ocid="p2p.post_ad.dialog"
+      >
+        <DialogHeader>
+          <DialogTitle style={{ color: "#FFD700" }}>Post P2P Ad</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {/* Type */}
+          <div>
+            <p
+              className="text-xs mb-2"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+            >
+              Ad Type
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {(["buy", "sell"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, type: t }))}
+                  className="py-2 rounded-lg font-bold text-sm capitalize transition-all"
+                  style={{
+                    background:
+                      form.type === t
+                        ? t === "buy"
+                          ? "rgba(0,255,136,0.2)"
+                          : "rgba(255,51,102,0.2)"
+                        : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${form.type === t ? (t === "buy" ? "rgba(0,255,136,0.4)" : "rgba(255,51,102,0.4)") : "rgba(255,255,255,0.06)"}`,
+                    color:
+                      form.type === t
+                        ? t === "buy"
+                          ? "#21C57A"
+                          : "#E24A4A"
+                        : "rgba(255,255,255,0.5)",
+                  }}
+                >
+                  {t === "buy" ? "I want to Buy" : "I want to Sell"}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Coin */}
+          <div>
+            <p
+              className="text-xs mb-2"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+            >
+              Coin
+            </p>
+            <div className="flex gap-2">
+              {COINS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, coin: c }))}
+                  className="px-4 py-1.5 rounded-lg text-sm font-bold"
+                  style={{
+                    background:
+                      form.coin === c
+                        ? "rgba(255,215,0,0.15)"
+                        : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${form.coin === c ? "rgba(255,215,0,0.4)" : "rgba(255,255,255,0.06)"}`,
+                    color:
+                      form.coin === c ? "#FFD700" : "rgba(255,255,255,0.5)",
+                  }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Price, Min, Max */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <p
+                className="text-xs mb-1"
+                style={{ color: "rgba(255,255,255,0.5)" }}
+              >
+                Price ($)
+              </p>
+              <Input
+                type="number"
+                placeholder="0.00"
+                value={form.price}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, price: e.target.value }))
+                }
+                className="bg-white/5 border-white/10 text-white"
+                data-ocid="p2p.price.input"
+              />
+            </div>
+            <div>
+              <p
+                className="text-xs mb-1"
+                style={{ color: "rgba(255,255,255,0.5)" }}
+              >
+                Min ($)
+              </p>
+              <Input
+                type="number"
+                placeholder="10"
+                value={form.minAmount}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, minAmount: e.target.value }))
+                }
+                className="bg-white/5 border-white/10 text-white"
+                data-ocid="p2p.min.input"
+              />
+            </div>
+            <div>
+              <p
+                className="text-xs mb-1"
+                style={{ color: "rgba(255,255,255,0.5)" }}
+              >
+                Max ($)
+              </p>
+              <Input
+                type="number"
+                placeholder="1000"
+                value={form.maxAmount}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, maxAmount: e.target.value }))
+                }
+                className="bg-white/5 border-white/10 text-white"
+                data-ocid="p2p.max.input"
+              />
+            </div>
+          </div>
+          {/* Country */}
+          <div>
+            <p
+              className="text-xs mb-2"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+            >
+              Country
+            </p>
+            <select
+              value={form.country}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, country: e.target.value }))
+              }
+              data-ocid="p2p.country.select"
+              className="w-full px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 text-white outline-none"
+              style={{ background: "rgba(255,255,255,0.05)" }}
+            >
+              {Object.keys(COUNTRY_DATA).map((c) => (
+                <option key={c} value={c} style={{ background: "#111318" }}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <p
+              className="text-xs mt-1"
+              style={{ color: "rgba(255,255,255,0.3)" }}
+            >
+              1 USD = {countryInfo.rate} {countryInfo.currency}
+            </p>
+          </div>
+          {/* Payment methods */}
+          <div>
+            <p
+              className="text-xs mb-2"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+            >
+              Payment Methods
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(countryInfo.methods.length
+                ? countryInfo.methods
+                : ALL_PAYMENT_METHODS
+              ).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => toggleMethod(m)}
+                  className="px-3 py-1 rounded-full text-xs font-semibold transition-all"
+                  style={{
+                    background: form.paymentMethods.includes(m)
+                      ? "rgba(0,240,255,0.15)"
+                      : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${form.paymentMethods.includes(m) ? "rgba(0,240,255,0.3)" : "rgba(255,255,255,0.06)"}`,
+                    color: form.paymentMethods.includes(m)
+                      ? "#00F0FF"
+                      : "rgba(255,255,255,0.5)",
+                  }}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Button
+            onClick={submit}
+            data-ocid="p2p.post_ad.submit_button"
+            className="w-full"
+            style={{
+              background: "linear-gradient(135deg,#FFD700,#FFA500)",
+              color: "#000",
+              fontWeight: 700,
+            }}
+          >
+            Post Ad
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT);
+}
+
+// ─── TradeModal ───────────────────────────────────────────────────────────────
+function TradeModal({ ad, onClose }: { ad: P2PAd; onClose: () => void }) {
+  const { user } = useAuth();
+  const [tradeAmt, setTradeAmt] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      from: ad.postedBy,
+      text: `Hello! I'm ready to ${ad.type === "sell" ? "sell" : "buy"} ${ad.coin}. Please proceed with payment.`,
+      time: new Date().toLocaleTimeString("en", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    },
+  ]);
   const [chatInput, setChatInput] = useState("");
-  const [timeLeft, setTimeLeft] = useState(900); // 15 min
+  const [timeLeft, setTimeLeft] = useState(30 * 60);
+  const [paid, setPaid] = useState(false);
+  const [proofFile, setProofFile] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!selectedAd) return;
-    const interval = setInterval(() => {
-      setTimeLeft((t) => Math.max(0, t - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [selectedAd]);
+    const iv = setInterval(() => setTimeLeft((t) => Math.max(0, t - 1)), 1000);
+    return () => clearInterval(iv);
+  }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on new messages
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []); // scroll triggered by mutation not dep tracking
+  }, [chatMessages]);
 
   function sendMessage() {
     if (!chatInput.trim()) return;
     const msg: ChatMessage = {
-      id: Date.now(),
-      from: "buyer",
+      from: user?.username || "You",
       text: chatInput,
       time: new Date().toLocaleTimeString("en", {
         hour: "2-digit",
@@ -259,14 +445,12 @@ export function P2P() {
     };
     setChatMessages((prev) => [...prev, msg]);
     setChatInput("");
-    // Auto reply
     setTimeout(() => {
       setChatMessages((prev) => [
         ...prev,
         {
-          id: Date.now() + 1,
-          from: "seller",
-          text: "Please send payment proof after completing the transaction.",
+          from: ad.postedBy,
+          text: "Received. Please wait for confirmation.",
           time: new Date().toLocaleTimeString("en", {
             hour: "2-digit",
             minute: "2-digit",
@@ -276,600 +460,706 @@ export function P2P() {
     }, 1500);
   }
 
-  const timerPct = (timeLeft / 900) * 100;
-  const timerColor =
-    timeLeft < 180 ? "#FF3366" : timeLeft < 300 ? "#FFD700" : "#00FF88";
+  function handlePaid() {
+    setPaid(true);
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        from: user?.username || "You",
+        text: "I have made the payment. Please confirm.",
+        time: new Date().toLocaleTimeString("en", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
+    ]);
+    toast.success("Payment marked! Waiting for seller confirmation.");
+  }
 
-  const mmSS = `${Math.floor(timeLeft / 60)
-    .toString()
-    .padStart(2, "0")}:${(timeLeft % 60).toString().padStart(2, "0")}`;
+  function handleDispute() {
+    const disputes = loadDisputes();
+    const dispute = {
+      id: `D${Date.now()}`,
+      tradeId: `T${Date.now()}`,
+      buyer: user?.username || "Unknown",
+      seller: ad.postedBy,
+      amount: Number.parseFloat(tradeAmt) || 0,
+      coin: ad.coin,
+      reason: "Payment dispute",
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    saveDisputes([...disputes, dispute]);
+    toast.error("Dispute raised. Admin will review within 24h.");
+    onClose();
+  }
+
+  function handleProofUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setProofFile(reader.result as string);
+    reader.readAsDataURL(file);
+    toast.success("Payment proof uploaded!");
+  }
+
+  const mins = Math.floor(timeLeft / 60);
+  const secs = timeLeft % 60;
+  const localPrice = ad.price * (COUNTRY_DATA[ad.country]?.rate || 1);
+  const localCurrency = COUNTRY_DATA[ad.country]?.currency || "USD";
 
   return (
-    <div className="min-h-screen bg-mesh pt-20 pb-16">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
-        >
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="font-display text-3xl font-bold text-white">
-              P2P <span className="gold-gradient">Exchange</span>
-            </h1>
-            <Badge
-              className="text-xs"
-              style={{
-                background: "rgba(0,240,255,0.1)",
-                border: "1px solid rgba(0,240,255,0.3)",
-                color: "#00F0FF",
-              }}
-            >
-              <Shield className="w-3 h-3 mr-1" />
-              Escrow Protected
-            </Badge>
-          </div>
-          <p className="text-white/40 text-sm">
-            Trade crypto securely with our escrow system. Funds locked until
-            payment confirmed.
-          </p>
-        </motion.div>
-
-        {/* KYC Gate Banner */}
-        {!kycVerified && (
-          <div
-            className="rounded-2xl p-5 mb-6 flex items-start gap-4"
-            data-ocid="p2p.kyc.error_state"
-            style={{
-              background: "rgba(255,215,0,0.06)",
-              border: "2px solid rgba(255,215,0,0.35)",
-              boxShadow: "0 0 20px rgba(255,215,0,0.08)",
-            }}
-          >
-            <Shield
-              className="w-6 h-6 shrink-0 mt-0.5"
-              style={{ color: "#FFD700" }}
-            />
-            <div className="flex-1">
-              <p className="font-bold text-white mb-1">
-                KYC Verification Required
-              </p>
-              <p className="text-sm text-white/50 mb-3">
-                You must complete KYC identity verification to use P2P trading.
-                This ensures a safe and secure trading environment.
-              </p>
-              <a href="/kyc">
-                <button
-                  type="button"
-                  data-ocid="p2p.kyc.primary_button"
-                  className="px-4 py-2 rounded-lg text-sm font-bold transition-all"
-                  style={{
-                    background: "rgba(255,215,0,0.2)",
-                    border: "1px solid rgba(255,215,0,0.4)",
-                    color: "#FFD700",
-                  }}
-                >
-                  Verify Now →
-                </button>
-              </a>
-            </div>
-          </div>
-        )}
-
-        {/* Escrow info bar */}
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent
+        className="max-w-lg max-h-[90vh] overflow-y-auto"
+        style={{
+          background: "#111318",
+          border: "1px solid rgba(255,215,0,0.15)",
+        }}
+        data-ocid="p2p.trade.dialog"
+      >
+        <DialogHeader>
+          <DialogTitle style={{ color: "#FFD700" }}>
+            Trade with {ad.postedBy}
+          </DialogTitle>
+        </DialogHeader>
+        {/* Timer */}
         <div
-          className="rounded-xl px-4 py-3 flex items-center gap-3 mb-6"
+          className="flex items-center gap-2 p-3 rounded-xl mb-2"
           style={{
-            background: "rgba(255,215,0,0.06)",
-            border: "1px solid rgba(255,215,0,0.2)",
+            background:
+              timeLeft < 300 ? "rgba(255,51,102,0.1)" : "rgba(255,215,0,0.05)",
+            border: `1px solid ${timeLeft < 300 ? "rgba(255,51,102,0.2)" : "rgba(255,215,0,0.1)"}`,
           }}
         >
-          <Lock className="w-4 h-4 shrink-0" style={{ color: "#FFD700" }} />
-          <p className="text-xs text-white/60">
-            <span className="font-semibold" style={{ color: "#FFD700" }}>
-              Escrow System:
-            </span>{" "}
-            Seller&apos;s crypto is locked by SKCE until buyer confirms payment.
-            100% secure, no scam possible.
+          <Timer
+            className="w-4 h-4"
+            style={{ color: timeLeft < 300 ? "#E24A4A" : "#FFD700" }}
+          />
+          <span
+            className="text-sm font-mono font-bold"
+            style={{ color: timeLeft < 300 ? "#E24A4A" : "#FFD700" }}
+          >
+            {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+          </span>
+          <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
+            Payment window
+          </span>
+        </div>
+        {/* Trade info */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div
+            className="rounded-xl p-3"
+            style={{ background: "rgba(255,255,255,0.03)" }}
+          >
+            <p
+              className="text-xs mb-1"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+            >
+              Price
+            </p>
+            <p className="font-bold" style={{ color: "#FFD700" }}>
+              {localPrice.toFixed(2)} {localCurrency}
+            </p>
+          </div>
+          <div
+            className="rounded-xl p-3"
+            style={{ background: "rgba(255,255,255,0.03)" }}
+          >
+            <p
+              className="text-xs mb-1"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+            >
+              Limits
+            </p>
+            <p className="font-bold text-sm" style={{ color: "#F5F6F8" }}>
+              ${ad.minAmount} – ${ad.maxAmount}
+            </p>
+          </div>
+        </div>
+        {/* Amount input */}
+        <div className="mb-4">
+          <p
+            className="text-xs mb-2"
+            style={{ color: "rgba(255,255,255,0.5)" }}
+          >
+            Amount (USD)
           </p>
+          <Input
+            type="number"
+            placeholder={`${ad.minAmount} – ${ad.maxAmount}`}
+            value={tradeAmt}
+            onChange={(e) => setTradeAmt(e.target.value)}
+            className="bg-white/5 border-white/10 text-white"
+            data-ocid="p2p.trade.input"
+          />
+        </div>
+        {/* Payment methods */}
+        <div className="mb-4">
+          <p
+            className="text-xs mb-2"
+            style={{ color: "rgba(255,255,255,0.5)" }}
+          >
+            Payment Methods
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {ad.paymentMethods.map((m) => (
+              <Badge
+                key={m}
+                style={{
+                  background: "rgba(0,240,255,0.1)",
+                  color: "#00F0FF",
+                  border: "1px solid rgba(0,240,255,0.2)",
+                }}
+              >
+                {m}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        {/* Proof upload */}
+        <div className="mb-4">
+          <p
+            className="text-xs mb-2"
+            style={{ color: "rgba(255,255,255,0.5)" }}
+          >
+            Upload Payment Proof
+          </p>
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: label wraps file input */}
+          <label
+            data-ocid="p2p.upload_button"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer w-fit text-sm"
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "rgba(255,255,255,0.6)",
+            }}
+          >
+            <Upload className="w-4 h-4" />
+            {proofFile ? "Proof Uploaded ✓" : "Upload Screenshot"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleProofUpload}
+            />
+          </label>
+        </div>
+        {/* Chat */}
+        <div className="mb-4">
+          <p
+            className="text-xs mb-2"
+            style={{ color: "rgba(255,255,255,0.5)" }}
+          >
+            Chat
+          </p>
+          <div
+            className="rounded-xl p-3 h-40 overflow-y-auto space-y-2"
+            style={{
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            {chatMessages.map((msg, i) => (
+              <div
+                key={String(i)}
+                className={`flex ${msg.from === (user?.username || "You") ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className="max-w-[80%] px-3 py-1.5 rounded-xl"
+                  style={{
+                    background:
+                      msg.from === (user?.username || "You")
+                        ? "rgba(255,215,0,0.15)"
+                        : "rgba(255,255,255,0.06)",
+                    color: "#F5F6F8",
+                  }}
+                >
+                  <p className="text-xs">{msg.text}</p>
+                  <p
+                    className="text-[10px] mt-0.5"
+                    style={{ color: "rgba(255,255,255,0.3)" }}
+                  >
+                    {msg.time}
+                  </p>
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+          <div className="flex gap-2 mt-2">
+            <input
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+              placeholder="Type a message..."
+              data-ocid="p2p.chat.input"
+              className="flex-1 px-3 py-2 rounded-xl text-sm bg-white/5 border border-white/10 text-white outline-none"
+            />
+            <button
+              type="button"
+              onClick={sendMessage}
+              data-ocid="p2p.chat.send_button"
+              className="p-2 rounded-xl"
+              style={{ background: "rgba(255,215,0,0.15)", color: "#FFD700" }}
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        {/* Action buttons */}
+        <div className="flex gap-2">
+          {!paid ? (
+            <Button
+              onClick={handlePaid}
+              data-ocid="p2p.paid.confirm_button"
+              className="flex-1"
+              style={{
+                background: "rgba(0,255,136,0.2)",
+                color: "#21C57A",
+                border: "1px solid rgba(0,255,136,0.3)",
+              }}
+            >
+              I've Paid
+            </Button>
+          ) : (
+            <Button
+              disabled
+              className="flex-1 opacity-50"
+              style={{ background: "rgba(0,255,136,0.1)", color: "#21C57A" }}
+            >
+              ✓ Payment Sent
+            </Button>
+          )}
+          <Button
+            onClick={handleDispute}
+            data-ocid="p2p.dispute.button"
+            variant="destructive"
+            className="flex-1"
+          >
+            Raise Dispute
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Main P2P Component ───────────────────────────────────────────────────────
+export function P2P() {
+  const { isLoggedIn, user } = useAuth();
+  const [ads, setAds] = useState<P2PAd[]>(loadAds);
+  const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
+  const [filterCoin, setFilterCoin] = useState<"ALL" | "USDT" | "BTC" | "ETH">(
+    "ALL",
+  );
+  const [filterPayment, setFilterPayment] = useState("ALL");
+  const [filterCountry, setFilterCountry] = useState("ALL");
+  const [showPostModal, setShowPostModal] = useState(false);
+  const [tradeAd, setTradeAd] = useState<P2PAd | null>(null);
+  const isKYCVerified = (() => {
+    if (!user) return false;
+    const kycKey = `sce_kyc_${user.username || user.email?.split("@")[0]}`;
+    try {
+      const kyc = JSON.parse(localStorage.getItem(kycKey) || "{}");
+      return kyc.status === "verified";
+    } catch {
+      return false;
+    }
+  })();
+
+  const filteredAds = ads.filter((ad) => {
+    if (ad.status !== "active") return false;
+    if (ad.type !== activeTab) return false;
+    if (filterCoin !== "ALL" && ad.coin !== filterCoin) return false;
+    if (filterPayment !== "ALL" && !ad.paymentMethods.includes(filterPayment))
+      return false;
+    if (filterCountry !== "ALL" && ad.country !== filterCountry) return false;
+    return true;
+  });
+
+  function handlePostAd(ad: P2PAd) {
+    const updated = [ad, ...ads];
+    setAds(updated);
+    saveAds(updated);
+  }
+
+  return (
+    <div className="min-h-screen" style={{ background: "#0A0A0A" }}>
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: "#F5F6F8" }}>
+              P2P Exchange
+            </h1>
+            <p
+              className="text-sm mt-1"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+            >
+              Trade directly with other users. KYC required.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {isKYCVerified ? (
+              <div
+                className="flex items-center gap-1 px-2 py-1 rounded-full"
+                style={{ background: "rgba(0,255,136,0.1)", color: "#21C57A" }}
+              >
+                <ShieldCheck className="w-3 h-3" />
+                <span className="text-xs">KYC Verified</span>
+              </div>
+            ) : null}
+            {isLoggedIn ? (
+              isKYCVerified ? (
+                <Button
+                  onClick={() => setShowPostModal(true)}
+                  data-ocid="p2p.post_ad.open_modal_button"
+                  style={{
+                    background: "linear-gradient(135deg,#FFD700,#FFA500)",
+                    color: "#000",
+                    fontWeight: 700,
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Post Ad
+                </Button>
+              ) : (
+                <a href="/kyc">
+                  <Button
+                    data-ocid="p2p.kyc.button"
+                    style={{
+                      background: "rgba(255,51,102,0.15)",
+                      color: "#E24A4A",
+                      border: "1px solid rgba(255,51,102,0.3)",
+                    }}
+                  >
+                    Complete KYC to Post
+                  </Button>
+                </a>
+              )
+            ) : (
+              <a href="/login">
+                <Button
+                  data-ocid="p2p.login.button"
+                  style={{
+                    background: "rgba(255,215,0,0.15)",
+                    color: "#FFD700",
+                    border: "1px solid rgba(255,215,0,0.3)",
+                  }}
+                >
+                  Login to Trade
+                </Button>
+              </a>
+            )}
+          </div>
         </div>
 
-        {/* BUY/SELL tabs */}
-        <div className="flex gap-3 mb-5">
-          {(["BUY", "SELL"] as const).map((t) => (
+        {/* Buy/Sell Tabs */}
+        <div
+          className="inline-flex rounded-xl overflow-hidden mb-6"
+          style={{ border: "1px solid rgba(255,255,255,0.06)" }}
+        >
+          {(["buy", "sell"] as const).map((t) => (
             <button
               key={t}
               type="button"
-              onClick={() => setTab(t)}
-              data-ocid={`p2p.${t.toLowerCase()}.tab`}
-              className="px-8 py-2.5 rounded-full font-bold text-sm transition-all"
+              onClick={() => setActiveTab(t)}
+              data-ocid={`p2p.${t}.tab`}
+              className="px-8 py-2.5 font-bold capitalize text-sm transition-all"
               style={{
                 background:
-                  tab === t
-                    ? t === "BUY"
-                      ? "linear-gradient(135deg, #FFD700, #FFA500)"
-                      : "linear-gradient(135deg, #FF3366, #cc0033)"
-                    : "rgba(255,255,255,0.05)",
-                color: tab === t ? "#0a0a0a" : "rgba(255,255,255,0.5)",
-                boxShadow:
-                  tab === t
-                    ? t === "BUY"
-                      ? "0 0 20px rgba(255,215,0,0.3)"
-                      : "0 0 20px rgba(255,51,102,0.3)"
-                    : "none",
-                border: tab === t ? "none" : "1px solid rgba(255,255,255,0.1)",
+                  activeTab === t
+                    ? t === "buy"
+                      ? "rgba(0,255,136,0.15)"
+                      : "rgba(255,51,102,0.15)"
+                    : "transparent",
+                color:
+                  activeTab === t
+                    ? t === "buy"
+                      ? "#21C57A"
+                      : "#E24A4A"
+                    : "rgba(255,255,255,0.4)",
+                borderBottom:
+                  activeTab === t
+                    ? `2px solid ${t === "buy" ? "#21C57A" : "#E24A4A"}`
+                    : "2px solid transparent",
               }}
             >
-              {t} USDT
+              {t === "buy" ? "Buy Crypto" : "Sell Crypto"}
             </button>
           ))}
         </div>
 
-        {/* Country + Filters */}
-        <div
-          className="rounded-2xl p-4 mb-5"
-          style={{
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,215,0,0.15)",
-          }}
-        >
-          <div className="flex flex-wrap gap-3 items-center mb-4">
-            <div className="flex items-center gap-2 text-white/40">
-              <Filter className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium uppercase tracking-wider">
-                Country:
-              </span>
-            </div>
-            <Select
-              value={selectedCountry}
-              onValueChange={(v) => {
-                setSelectedCountry(v);
-                setSelectedPaymentChip("");
-              }}
-            >
-              <SelectTrigger
-                data-ocid="p2p.country.select"
-                className="h-8 w-44 text-xs bg-white/5 border-white/10 text-white"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(COUNTRY_PAYMENT_DATA).map(([code, d]) => (
-                  <SelectItem key={code} value={code}>
-                    {d.flag} {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={payMethod} onValueChange={setPayMethod}>
-              <SelectTrigger
-                data-ocid="p2p.payment.select"
-                className="h-8 w-36 text-xs bg-white/5 border-white/10 text-white"
-              >
-                <SelectValue placeholder="Payment Method" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Methods</SelectItem>
-                <SelectItem value="bank">Bank Transfer</SelectItem>
-                <SelectItem value="upi">UPI</SelectItem>
-                <SelectItem value="intl">International</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Country info card */}
-          {(() => {
-            const cd = COUNTRY_PAYMENT_DATA[selectedCountry];
-            if (!cd) return null;
-            const amt = Number.parseFloat(tradeAmount) || 100;
-            const localAmt = (amt * cd.rate).toLocaleString("en-US", {
-              maximumFractionDigits: 2,
-            });
-            return (
-              <div className="space-y-3">
-                {/* Rate card */}
-                <div className="flex flex-wrap items-center gap-4">
-                  <div
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-                    style={{
-                      background: "rgba(0,255,136,0.08)",
-                      border: "1px solid rgba(0,255,136,0.2)",
-                    }}
-                  >
-                    <span className="text-lg">{cd.flag}</span>
-                    <span
-                      className="text-sm font-bold"
-                      style={{ color: "#00FF88" }}
-                    >
-                      1 USD = {cd.rate} {cd.currency}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      placeholder="Amount (USD)"
-                      value={tradeAmount}
-                      onChange={(e) => setTradeAmount(e.target.value)}
-                      data-ocid="p2p.amount.input"
-                      className="h-8 w-32 text-xs bg-white/5 border-white/10 text-white"
-                    />
-                    <span className="text-xs text-white/50">→</span>
-                    <span
-                      className="text-sm font-bold"
-                      style={{ color: "#FFD700" }}
-                    >
-                      {localAmt} {cd.currency}
-                    </span>
-                  </div>
-                </div>
-                {/* Payment methods */}
-                <div>
-                  <p
-                    className="text-[10px] mb-2 uppercase tracking-wider"
-                    style={{ color: "#6A6E78" }}
-                  >
-                    Payment Methods
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {cd.payments.map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() =>
-                          setSelectedPaymentChip(
-                            p === selectedPaymentChip ? "" : p,
-                          )
-                        }
-                        className="px-3 py-1 rounded-full text-xs font-medium transition-all"
-                        style={{
-                          background:
-                            selectedPaymentChip === p
-                              ? "rgba(255,215,0,0.2)"
-                              : "rgba(255,255,255,0.05)",
-                          border:
-                            selectedPaymentChip === p
-                              ? "1px solid rgba(255,215,0,0.5)"
-                              : "1px solid rgba(255,255,255,0.1)",
-                          color:
-                            selectedPaymentChip === p ? "#FFD700" : "#8A8F98",
-                        }}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {/* Banks */}
-                <div>
-                  <p
-                    className="text-[10px] mb-2 uppercase tracking-wider"
-                    style={{ color: "#6A6E78" }}
-                  >
-                    Preferred Banks
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {cd.banks.map((b) => (
-                      <span
-                        key={b}
-                        className="px-2 py-1 rounded text-[10px]"
-                        style={{
-                          background: "rgba(0,240,255,0.07)",
-                          color: "#00F0FF",
-                          border: "1px solid rgba(0,240,255,0.2)",
-                        }}
-                      >
-                        {b}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+        {/* Filters */}
+        <div className="flex flex-wrap gap-3 mb-6">
+          <select
+            value={filterCoin}
+            onChange={(e) => setFilterCoin(e.target.value as any)}
+            data-ocid="p2p.coin.select"
+            className="px-3 py-1.5 rounded-lg text-sm outline-none"
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "rgba(255,255,255,0.8)",
+            }}
+          >
+            <option value="ALL" style={{ background: "#0A0A0A" }}>
+              All Coins
+            </option>
+            {COINS.map((c) => (
+              <option key={c} value={c} style={{ background: "#0A0A0A" }}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterPayment}
+            onChange={(e) => setFilterPayment(e.target.value)}
+            data-ocid="p2p.payment.select"
+            className="px-3 py-1.5 rounded-lg text-sm outline-none"
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "rgba(255,255,255,0.8)",
+            }}
+          >
+            <option value="ALL" style={{ background: "#0A0A0A" }}>
+              All Payment Methods
+            </option>
+            {ALL_PAYMENT_METHODS.map((m) => (
+              <option key={m} value={m} style={{ background: "#0A0A0A" }}>
+                {m}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterCountry}
+            onChange={(e) => setFilterCountry(e.target.value)}
+            data-ocid="p2p.country_filter.select"
+            className="px-3 py-1.5 rounded-lg text-sm outline-none"
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "rgba(255,255,255,0.8)",
+            }}
+          >
+            <option value="ALL" style={{ background: "#0A0A0A" }}>
+              All Countries
+            </option>
+            {Object.keys(COUNTRY_DATA).map((c) => (
+              <option key={c} value={c} style={{ background: "#0A0A0A" }}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* Ads list */}
-        <div className="space-y-3">
-          {P2P_ADS.map((ad, i) => (
-            <motion.div
-              key={ad.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              data-ocid={`p2p.item.${i + 1}`}
-              className="rounded-2xl p-4 sm:p-5"
-              style={{
-                background: "rgba(255,255,255,0.03)",
-                backdropFilter: "blur(12px)",
-                border: "1px solid rgba(255,215,0,0.1)",
-              }}
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                {/* Seller info */}
-                <div className="flex items-start gap-3 flex-1">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
-                    style={{
-                      background: "linear-gradient(135deg, #FFD700, #FFA500)",
-                      color: "#0a0a0a",
-                    }}
-                  >
-                    {ad.avatar}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-white text-sm">
-                        {ad.seller}
-                      </span>
-                      <span
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+        {/* Ads table */}
+        {filteredAds.length === 0 ? (
+          <div
+            className="rounded-2xl p-16 text-center"
+            style={{
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
+            data-ocid="p2p.empty_state"
+          >
+            <div className="text-5xl mb-4">🤝</div>
+            <p className="text-lg font-bold mb-2" style={{ color: "#F5F6F8" }}>
+              No ads available yet
+            </p>
+            <p className="text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>
+              Be the first to post a {activeTab} ad!
+            </p>
+            {isLoggedIn && isKYCVerified && (
+              <Button
+                onClick={() => setShowPostModal(true)}
+                className="mt-4"
+                data-ocid="p2p.first_post.button"
+                style={{
+                  background: "linear-gradient(135deg,#FFD700,#FFA500)",
+                  color: "#000",
+                }}
+              >
+                Post First Ad
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredAds.map((ad, idx) => {
+              const countryInfo = COUNTRY_DATA[ad.country];
+              const localPrice = ad.price * (countryInfo?.rate || 1);
+              return (
+                <div
+                  key={ad.id}
+                  data-ocid={`p2p.item.${idx + 1}`}
+                  className="rounded-2xl p-5 flex flex-wrap items-center gap-4"
+                  style={{
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  {/* Advertiser */}
+                  <div className="min-w-32">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
                         style={{
-                          background: `${ad.levelColor}20`,
-                          color: ad.levelColor,
-                          border: `1px solid ${ad.levelColor}40`,
+                          background: "rgba(255,215,0,0.15)",
+                          color: "#FFD700",
                         }}
                       >
-                        {ad.level}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <div className="flex items-center gap-0.5">
-                        {Array.from({ length: 5 }).map((_, si) => (
-                          <Star
-                            key={String(si)}
-                            className="w-2.5 h-2.5"
-                            style={{
-                              color:
-                                si < Math.round(ad.rating)
-                                  ? "#FFD700"
-                                  : "rgba(255,255,255,0.15)",
-                            }}
-                            fill={
-                              si < Math.round(ad.rating) ? "#FFD700" : "none"
-                            }
-                          />
-                        ))}
-                        <span className="text-[10px] text-white/40 ml-1">
-                          {ad.rating}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-white/30">
-                        {ad.trades} trades
-                      </span>
-                    </div>
-                    {/* Completion bar */}
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="h-1 w-16 rounded-full bg-white/10 overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${ad.completion}%`,
-                            background: "#00FF88",
-                          }}
-                        />
+                        {ad.postedBy[0].toUpperCase()}
                       </div>
                       <span
-                        className="text-[10px]"
-                        style={{ color: "#00FF88" }}
+                        className="font-semibold text-sm"
+                        style={{ color: "#F5F6F8" }}
                       >
-                        {ad.completion}% completion
+                        {ad.postedBy}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={String(i)}
+                          className="w-3 h-3"
+                          style={{
+                            color:
+                              i < Math.floor(ad.rating)
+                                ? "#FFD700"
+                                : "rgba(255,255,255,0.15)",
+                            fill:
+                              i < Math.floor(ad.rating) ? "#FFD700" : "none",
+                          }}
+                        />
+                      ))}
+                      <span
+                        className="text-[10px] ml-1"
+                        style={{ color: "rgba(255,255,255,0.4)" }}
+                      >
+                        {ad.completionRate}%
                       </span>
                     </div>
                   </div>
-                </div>
-
-                {/* Price + amount */}
-                <div className="flex items-center gap-6 sm:gap-8">
-                  <div className="text-center">
-                    <div className="text-[10px] text-white/30 uppercase mb-0.5">
+                  {/* Price */}
+                  <div className="min-w-24">
+                    <p
+                      className="text-[10px] mb-0.5"
+                      style={{ color: "rgba(255,255,255,0.4)" }}
+                    >
                       Price
-                    </div>
-                    <div
-                      className="font-mono font-bold"
+                    </p>
+                    <p
+                      className="font-bold text-sm"
                       style={{ color: "#FFD700" }}
                     >
-                      ${ad.price.toFixed(2)}
-                    </div>
+                      {localPrice.toFixed(2)} {countryInfo?.currency || "USD"}
+                    </p>
+                    <p
+                      className="text-[10px]"
+                      style={{ color: "rgba(255,255,255,0.3)" }}
+                    >
+                      per {ad.coin}
+                    </p>
                   </div>
-                  <div className="text-center">
-                    <div className="text-[10px] text-white/30 uppercase mb-0.5">
+                  {/* Limits */}
+                  <div className="min-w-28">
+                    <p
+                      className="text-[10px] mb-0.5"
+                      style={{ color: "rgba(255,255,255,0.4)" }}
+                    >
                       Available
-                    </div>
-                    <div className="font-mono font-bold text-white text-sm">
-                      {ad.available.toLocaleString()} USDT
-                    </div>
-                    <div className="text-[10px] text-white/30">
-                      ${ad.min}–${ad.max}
-                    </div>
+                    </p>
+                    <p className="text-sm" style={{ color: "#F5F6F8" }}>
+                      ${ad.minAmount} – ${ad.maxAmount}
+                    </p>
+                    <Badge
+                      style={{
+                        marginTop: 4,
+                        background: "rgba(255,255,255,0.05)",
+                        color: "rgba(255,255,255,0.5)",
+                        fontSize: 10,
+                      }}
+                    >
+                      {ad.coin}
+                    </Badge>
                   </div>
-                  <div>
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {ad.methods.map((m) => (
+                  {/* Payment methods */}
+                  <div className="flex-1 min-w-32">
+                    <p
+                      className="text-[10px] mb-1"
+                      style={{ color: "rgba(255,255,255,0.4)" }}
+                    >
+                      Payment
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {ad.paymentMethods.slice(0, 3).map((m) => (
                         <span
                           key={m}
-                          className="text-[10px] px-2 py-0.5 rounded-full"
+                          className="px-2 py-0.5 rounded-full text-[10px]"
                           style={{
                             background: "rgba(0,240,255,0.08)",
-                            border: "1px solid rgba(0,240,255,0.2)",
                             color: "#00F0FF",
+                            border: "1px solid rgba(0,240,255,0.15)",
                           }}
                         >
                           {m}
                         </span>
                       ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!isLoggedIn) {
-                          toast.error("Please login first.");
-                          return;
-                        }
-                        setSelectedAd(ad);
-                        setTimeLeft(900);
-                        setChatMessages(INITIAL_CHAT);
-                      }}
-                      data-ocid={`p2p.item.${i + 1}`}
-                      className="w-full font-bold text-xs py-2 px-4 rounded-lg transition-all"
-                      style={{
-                        background:
-                          tab === "BUY"
-                            ? "linear-gradient(135deg, #FFD700, #FFA500)"
-                            : "linear-gradient(135deg, #FF3366, #cc0033)",
-                        color: "#0a0a0a",
-                        boxShadow:
-                          tab === "BUY"
-                            ? "0 0 12px rgba(255,215,0,0.3)"
-                            : "0 0 12px rgba(255,51,102,0.3)",
-                      }}
-                    >
-                      {tab} Now
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-
-      {/* P2P Chat Dialog */}
-      <Dialog open={!!selectedAd} onOpenChange={() => setSelectedAd(null)}>
-        <DialogContent
-          className="max-w-md w-full p-0 overflow-hidden"
-          style={{
-            background: "#0f0f0f",
-            border: "1px solid rgba(255,215,0,0.2)",
-          }}
-        >
-          {selectedAd && (
-            <>
-              {/* Timer bar */}
-              <div className="relative h-1">
-                <div
-                  className="h-full transition-all duration-1000"
-                  style={{ width: `${timerPct}%`, background: timerColor }}
-                />
-              </div>
-
-              <DialogHeader className="px-4 pt-3 pb-2 border-b border-white/5">
-                <div className="flex items-center justify-between">
-                  <DialogTitle className="text-white text-sm font-display">
-                    Trade with {selectedAd.seller}
-                  </DialogTitle>
-                  <div
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-mono font-bold"
-                    style={{
-                      background: `${timerColor}15`,
-                      color: timerColor,
-                      border: `1px solid ${timerColor}30`,
-                    }}
-                  >
-                    <Clock className="w-3 h-3" />
-                    {mmSS}
-                  </div>
-                </div>
-              </DialogHeader>
-
-              {/* Chat */}
-              <div className="h-64 overflow-y-auto px-4 py-3 space-y-3">
-                {chatMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.from === "buyer" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className="max-w-[80%] rounded-2xl px-3 py-2 text-xs"
-                      style={{
-                        background:
-                          msg.from === "buyer"
-                            ? "rgba(255,215,0,0.15)"
-                            : "rgba(255,255,255,0.08)",
-                        border:
-                          msg.from === "buyer"
-                            ? "1px solid rgba(255,215,0,0.2)"
-                            : "1px solid rgba(255,255,255,0.1)",
-                        color: "rgba(255,255,255,0.9)",
-                      }}
-                    >
-                      <p>{msg.text}</p>
-                      <p className="text-white/25 text-[10px] mt-1 text-right">
-                        {msg.time}
-                      </p>
+                      {ad.paymentMethods.length > 3 && (
+                        <span
+                          className="text-[10px]"
+                          style={{ color: "rgba(255,255,255,0.3)" }}
+                        >
+                          +{ad.paymentMethods.length - 3}
+                        </span>
+                      )}
                     </div>
                   </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
-
-              {/* Actions */}
-              <div className="border-t border-white/5 p-3 space-y-2">
-                <div className="flex gap-2">
-                  <Input
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                    placeholder="Type a message..."
-                    className="flex-1 h-9 text-xs bg-white/5 border-white/10 text-white placeholder:text-white/25"
-                  />
-                  <button
-                    type="button"
-                    onClick={sendMessage}
-                    data-ocid="p2p.chat.button"
-                    className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                    style={{
-                      background: "linear-gradient(135deg, #FFD700, #FFA500)",
-                    }}
-                  >
-                    <Send className="w-4 h-4 text-black" />
-                  </button>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    data-ocid="p2p.upload_button"
-                    className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-xs font-medium transition-all"
-                    style={{
-                      background: "rgba(0,240,255,0.1)",
-                      border: "1px solid rgba(0,240,255,0.2)",
-                      color: "#00F0FF",
-                    }}
-                  >
-                    <Upload className="w-3.5 h-3.5" /> Upload Payment Proof
-                  </button>
+                  {/* Trade button */}
                   <button
                     type="button"
                     onClick={() => {
-                      toast.success(
-                        "Payment confirmed! Crypto released from escrow.",
-                      );
-                      setSelectedAd(null);
+                      if (!isLoggedIn) {
+                        toast.error("Please login first");
+                        return;
+                      }
+                      if (!isKYCVerified) {
+                        toast.error("Complete KYC to trade");
+                        return;
+                      }
+                      setTradeAd(ad);
                     }}
-                    data-ocid="p2p.confirm_button"
-                    className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-xs font-bold transition-all"
+                    data-ocid={`p2p.trade.button.${idx + 1}`}
+                    className="px-5 py-2 rounded-xl font-bold text-sm transition-all"
                     style={{
-                      background: "linear-gradient(135deg, #00FF88, #00cc66)",
-                      color: "#0a0a0a",
-                      boxShadow: "0 0 15px rgba(0,255,136,0.3)",
+                      background:
+                        ad.type === "sell"
+                          ? "rgba(0,255,136,0.15)"
+                          : "rgba(255,51,102,0.15)",
+                      border: `1px solid ${ad.type === "sell" ? "rgba(0,255,136,0.3)" : "rgba(255,51,102,0.3)"}`,
+                      color: ad.type === "sell" ? "#21C57A" : "#E24A4A",
                     }}
                   >
-                    <CheckCircle className="w-3.5 h-3.5" /> I Paid
+                    {ad.type === "sell" ? "Buy" : "Sell"}
                   </button>
                 </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-                <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-                  <MessageCircle className="w-3 h-3" />
-                  <span>
-                    Escrow protection active — crypto locked until payment
-                    confirmed
-                  </span>
-                </div>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Post Ad Modal */}
+      <PostAdModal
+        open={showPostModal}
+        onClose={() => setShowPostModal(false)}
+        onPost={handlePostAd}
+      />
+
+      {/* Trade Modal */}
+      {tradeAd && <TradeModal ad={tradeAd} onClose={() => setTradeAd(null)} />}
     </div>
   );
 }

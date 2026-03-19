@@ -140,6 +140,375 @@ function saveLS(key: string, val: unknown) {
   localStorage.setItem(key, JSON.stringify(val));
 }
 
+function P2PDashboard() {
+  const [p2pAds, setP2pAds] = React.useState<any[]>(() =>
+    loadLS("skce_p2p_ads", []),
+  );
+  const [disputes, setDisputes] = React.useState<any[]>(() =>
+    loadLS("skce_p2p_disputes", []),
+  );
+
+  React.useEffect(() => {
+    const iv = setInterval(() => {
+      setP2pAds(loadLS("skce_p2p_ads", []));
+      setDisputes(loadLS("skce_p2p_disputes", []));
+    }, 5000);
+    return () => clearInterval(iv);
+  }, []);
+
+  function suspendAd(id: string) {
+    const updated = p2pAds.map((a: any) =>
+      a.id === id ? { ...a, status: "suspended" } : a,
+    );
+    saveLS("skce_p2p_ads", updated);
+    setP2pAds(updated);
+    toast.success("Ad suspended");
+  }
+
+  function activateAd(id: string) {
+    const updated = p2pAds.map((a: any) =>
+      a.id === id ? { ...a, status: "active" } : a,
+    );
+    saveLS("skce_p2p_ads", updated);
+    setP2pAds(updated);
+    toast.success("Ad activated");
+  }
+
+  function resolveDispute(id: string, resolution: "buyer" | "seller") {
+    const updated = disputes.map((d: any) =>
+      d.id === id ? { ...d, status: "resolved", resolution } : d,
+    );
+    saveLS("skce_p2p_disputes", updated);
+    setDisputes(updated);
+    toast.success(`Dispute resolved in favor of ${resolution}`);
+  }
+
+  function rejectDispute(id: string) {
+    const updated = disputes.map((d: any) =>
+      d.id === id ? { ...d, status: "rejected" } : d,
+    );
+    saveLS("skce_p2p_disputes", updated);
+    setDisputes(updated);
+    toast.error("Dispute rejected");
+  }
+
+  // Fraud detection: users with >3 disputes or suspicious activity
+  const disputeCounts: Record<string, number> = {};
+  for (const d of disputes) {
+    disputeCounts[d.buyer] = (disputeCounts[d.buyer] || 0) + 1;
+    disputeCounts[d.seller] = (disputeCounts[d.seller] || 0) + 1;
+  }
+  const flaggedUsers = Object.entries(disputeCounts)
+    .filter(([, count]) => count >= 2)
+    .map(([user, count]) => ({ user, count }));
+
+  const activeAds = p2pAds.filter((a: any) => a.status === "active");
+  const pendingDisputes = disputes.filter((d: any) => d.status === "pending");
+
+  return (
+    <div className="space-y-6" data-ocid="admin.p2p.panel">
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: "Total Ads", value: p2pAds.length, color: "#FFD700" },
+          { label: "Active Ads", value: activeAds.length, color: "#21C57A" },
+          {
+            label: "Pending Disputes",
+            value: pendingDisputes.length,
+            color: "#FF9500",
+          },
+          {
+            label: "Fraud Flags",
+            value: flaggedUsers.length,
+            color: "#E24A4A",
+          },
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className="glass-card rounded-2xl p-4"
+            data-ocid="admin.p2p.card"
+          >
+            <p className="text-xs text-muted-foreground">{stat.label}</p>
+            <p
+              className="text-3xl font-bold mt-1"
+              style={{ color: stat.color }}
+            >
+              {stat.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Active Ads Table */}
+      <div className="glass-card rounded-2xl p-5">
+        <h3 className="font-display font-bold text-foreground mb-4">
+          Active P2P Ads
+        </h3>
+        {p2pAds.length === 0 ? (
+          <p
+            className="text-muted-foreground text-sm"
+            data-ocid="admin.p2p.ads.empty_state"
+          >
+            No ads posted yet.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-ocid="admin.p2p.ads.table">
+              <thead>
+                <tr className="text-muted-foreground text-xs uppercase tracking-wider">
+                  <th className="text-left pb-3">Ad ID</th>
+                  <th className="text-left pb-3">User</th>
+                  <th className="text-left pb-3">Type</th>
+                  <th className="text-left pb-3">Coin</th>
+                  <th className="text-right pb-3">Price</th>
+                  <th className="text-left pb-3">Limits</th>
+                  <th className="text-left pb-3">Country</th>
+                  <th className="text-left pb-3">Status</th>
+                  <th className="text-left pb-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {p2pAds.map((ad: any, idx: number) => (
+                  <tr
+                    key={ad.id}
+                    data-ocid={`admin.p2p.ad.row.${idx + 1}`}
+                    className="border-t border-border/30"
+                  >
+                    <td className="py-2 text-xs text-muted-foreground font-mono">
+                      {ad.id.slice(-6)}
+                    </td>
+                    <td className="py-2 font-semibold text-foreground">
+                      {ad.postedBy}
+                    </td>
+                    <td className="py-2">
+                      <Badge
+                        style={{
+                          background:
+                            ad.type === "buy"
+                              ? "rgba(0,255,136,0.15)"
+                              : "rgba(255,51,102,0.15)",
+                          color: ad.type === "buy" ? "#21C57A" : "#E24A4A",
+                        }}
+                      >
+                        {ad.type.toUpperCase()}
+                      </Badge>
+                    </td>
+                    <td className="py-2 font-bold" style={{ color: "#FFD700" }}>
+                      {ad.coin}
+                    </td>
+                    <td className="py-2 text-right font-mono text-foreground">
+                      ${ad.price}
+                    </td>
+                    <td className="py-2 text-muted-foreground text-xs">
+                      ${ad.minAmount}–${ad.maxAmount}
+                    </td>
+                    <td className="py-2 text-muted-foreground">{ad.country}</td>
+                    <td className="py-2">
+                      <Badge
+                        style={{
+                          background:
+                            ad.status === "active"
+                              ? "rgba(0,255,136,0.1)"
+                              : "rgba(255,51,102,0.1)",
+                          color: ad.status === "active" ? "#21C57A" : "#E24A4A",
+                        }}
+                      >
+                        {ad.status}
+                      </Badge>
+                    </td>
+                    <td className="py-2">
+                      <div className="flex gap-1">
+                        {ad.status === "active" ? (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-6 text-xs"
+                            onClick={() => suspendAd(ad.id)}
+                            data-ocid={`admin.p2p.suspend.button.${idx + 1}`}
+                          >
+                            Suspend
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="h-6 text-xs bg-green-700"
+                            onClick={() => activateAd(ad.id)}
+                            data-ocid={`admin.p2p.activate.button.${idx + 1}`}
+                          >
+                            Activate
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Disputes */}
+      <div className="glass-card rounded-2xl p-5">
+        <h3 className="font-display font-bold text-foreground mb-4">
+          Disputes
+        </h3>
+        {disputes.length === 0 ? (
+          <p
+            className="text-muted-foreground text-sm"
+            data-ocid="admin.p2p.disputes.empty_state"
+          >
+            No disputes raised.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table
+              className="w-full text-sm"
+              data-ocid="admin.p2p.disputes.table"
+            >
+              <thead>
+                <tr className="text-muted-foreground text-xs uppercase tracking-wider">
+                  <th className="text-left pb-3">Dispute ID</th>
+                  <th className="text-left pb-3">Buyer</th>
+                  <th className="text-left pb-3">Seller</th>
+                  <th className="text-right pb-3">Amount</th>
+                  <th className="text-left pb-3">Reason</th>
+                  <th className="text-left pb-3">Status</th>
+                  <th className="text-left pb-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disputes.map((d: any, idx: number) => (
+                  <tr
+                    key={d.id}
+                    data-ocid={`admin.p2p.dispute.row.${idx + 1}`}
+                    className="border-t border-border/30"
+                  >
+                    <td className="py-2 font-mono text-xs text-muted-foreground">
+                      {d.id}
+                    </td>
+                    <td className="py-2 text-foreground">{d.buyer}</td>
+                    <td className="py-2 text-foreground">{d.seller}</td>
+                    <td className="py-2 text-right font-mono text-foreground">
+                      ${d.amount}
+                    </td>
+                    <td className="py-2 text-muted-foreground text-xs">
+                      {d.reason}
+                    </td>
+                    <td className="py-2">
+                      <Badge
+                        style={{
+                          background:
+                            d.status === "pending"
+                              ? "rgba(255,149,0,0.1)"
+                              : d.status === "resolved"
+                                ? "rgba(0,255,136,0.1)"
+                                : "rgba(255,51,102,0.1)",
+                          color:
+                            d.status === "pending"
+                              ? "#FF9500"
+                              : d.status === "resolved"
+                                ? "#21C57A"
+                                : "#E24A4A",
+                        }}
+                      >
+                        {d.status}
+                      </Badge>
+                    </td>
+                    <td className="py-2">
+                      {d.status === "pending" && (
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            className="h-6 text-xs bg-blue-700"
+                            onClick={() => resolveDispute(d.id, "buyer")}
+                            data-ocid={`admin.p2p.resolve_buyer.button.${idx + 1}`}
+                          >
+                            → Buyer
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="h-6 text-xs bg-purple-700"
+                            onClick={() => resolveDispute(d.id, "seller")}
+                            data-ocid={`admin.p2p.resolve_seller.button.${idx + 1}`}
+                          >
+                            → Seller
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-6 text-xs"
+                            onClick={() => rejectDispute(d.id)}
+                            data-ocid={`admin.p2p.reject.button.${idx + 1}`}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Fraud Detection */}
+      <div className="glass-card rounded-2xl p-5">
+        <h3 className="font-display font-bold text-foreground mb-4">
+          Fraud Detection
+        </h3>
+        {flaggedUsers.length === 0 ? (
+          <p
+            className="text-muted-foreground text-sm"
+            data-ocid="admin.p2p.fraud.empty_state"
+          >
+            No suspicious users detected.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {flaggedUsers.map((fu, idx) => (
+              <div
+                key={fu.user}
+                data-ocid={`admin.p2p.fraud.item.${idx + 1}`}
+                className="flex items-center justify-between p-3 rounded-xl border border-border/30"
+              >
+                <div>
+                  <p className="font-bold text-foreground">{fu.user}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {fu.count} disputes raised — potential fraud risk
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-7 text-xs"
+                    data-ocid={`admin.p2p.warn.button.${idx + 1}`}
+                    onClick={() => toast.warning(`Warning sent to ${fu.user}`)}
+                  >
+                    Warn
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-7 text-xs"
+                    data-ocid={`admin.p2p.suspend_user.button.${idx + 1}`}
+                    onClick={() => toast.error(`${fu.user} account suspended`)}
+                  >
+                    Suspend
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminSettings() {
   const [settings, setSettings] = React.useState<{ dailyLimit: number }>(() => {
     try {
@@ -628,6 +997,7 @@ export function AdminDashboard() {
                 "kyc",
                 `KYC Review (${kycSubmissions.filter((k) => k.status === "pending").length})`,
               ],
+              ["p2p", "P2P Dashboard"],
               ["settings", "Settings"],
             ].map(([val, label]) => (
               <TabsTrigger
@@ -2468,6 +2838,11 @@ export function AdminDashboard() {
                 </div>
               )}
             </div>
+          </TabsContent>
+
+          {/* P2P Dashboard */}
+          <TabsContent value="p2p">
+            <P2PDashboard />
           </TabsContent>
 
           {/* Settings */}

@@ -109,19 +109,24 @@ export function AIAssistant() {
   const dragOffset = useRef({ x: 0, y: 0 });
   const windowRef = useRef<HTMLDivElement>(null);
 
-  // Fetch live prices
+  // Fetch live prices using 24hr ticker for all coins at once
   useEffect(() => {
     async function fetchPrices() {
       try {
-        const res = await fetch(
-          "https://api.binance.com/api/v3/ticker/price?symbols=[%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22]",
-        );
+        const res = await fetch("https://api.binance.com/api/v3/ticker/24hr");
         const data = await res.json();
+        const symbolMap: Record<string, string> = {
+          BTCUSDT: "BTC",
+          ETHUSDT: "ETH",
+          SOLUSDT: "SOL",
+          BNBUSDT: "BNB",
+          XRPUSDT: "XRP",
+          ADAUSDT: "ADA",
+        };
         const p: Record<string, number> = {};
         for (const item of data) {
-          if (item.symbol === "BTCUSDT") p.BTC = Number.parseFloat(item.price);
-          if (item.symbol === "ETHUSDT") p.ETH = Number.parseFloat(item.price);
-          if (item.symbol === "SOLUSDT") p.SOL = Number.parseFloat(item.price);
+          const key = symbolMap[item.symbol];
+          if (key) p[key] = Number.parseFloat(item.lastPrice);
         }
         setPrices(p);
       } catch {
@@ -129,7 +134,7 @@ export function AIAssistant() {
       }
     }
     fetchPrices();
-    const t = setInterval(fetchPrices, 15000);
+    const t = setInterval(fetchPrices, 30000);
     return () => clearInterval(t);
   }, []);
 

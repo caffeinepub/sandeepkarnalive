@@ -44,6 +44,13 @@ export function Trading() {
   const [executing, setExecuting] = useState(false);
   const [showPairMenu, setShowPairMenu] = useState(false);
   const priceRef = useRef(currentPrice);
+  const [openOrders, setOpenOrders] = useState<any[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("skce_open_orders") || "[]");
+    } catch {
+      return [];
+    }
+  });
 
   useEffect(() => {
     async function fetchPrice() {
@@ -98,6 +105,28 @@ export function Trading() {
     const newBalance = Math.max(0, (user.balance || 0) + pnl);
 
     updateUser({ balance: newBalance });
+
+    // Save to open orders
+    const order = {
+      id: `ord_${Date.now()}`,
+      pair: activePair.display,
+      type: orderType,
+      amount: amt,
+      price: currentPrice,
+      status: "Filled",
+      pnl: pnl.toFixed(2),
+      timestamp: Date.now(),
+    };
+    const orders = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("skce_open_orders") || "[]");
+      } catch {
+        return [];
+      }
+    })();
+    const updated = [order, ...orders].slice(0, 50);
+    localStorage.setItem("skce_open_orders", JSON.stringify(updated));
+    setOpenOrders(updated);
 
     if (win) {
       toast.success(`🚀 Trade Executed! +$${pnl.toFixed(2)} USDT profit!`);
@@ -463,6 +492,85 @@ export function Trading() {
           </div>
         </div>
       </div>
+      {/* Open Orders Section */}
+      {openOrders.length > 0 && (
+        <div
+          className="border-t px-4 py-4"
+          style={{
+            borderColor: "rgba(255,215,0,0.1)",
+            background: "rgba(10,10,10,0.9)",
+          }}
+        >
+          <h3 className="text-sm font-bold mb-3" style={{ color: "#FFD700" }}>
+            Recent Orders
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ color: "rgba(255,255,255,0.3)" }}>
+                  <th className="text-left pb-2">Pair</th>
+                  <th className="text-left pb-2">Type</th>
+                  <th className="text-right pb-2">Amount</th>
+                  <th className="text-right pb-2">Price</th>
+                  <th className="text-right pb-2">PNL</th>
+                  <th className="text-right pb-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {openOrders.slice(0, 10).map((order, idx) => (
+                  <tr
+                    key={order.id}
+                    data-ocid={`trading.order.item.${idx + 1}`}
+                    style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}
+                  >
+                    <td
+                      className="py-1.5 font-mono"
+                      style={{ color: "#FFD700" }}
+                    >
+                      {order.pair}
+                    </td>
+                    <td className="py-1.5">
+                      <span
+                        style={{
+                          color: order.type === "Buy" ? "#00FF88" : "#FF3366",
+                        }}
+                      >
+                        {order.type}
+                      </span>
+                    </td>
+                    <td className="py-1.5 text-right font-mono text-white/70">
+                      ${order.amount.toFixed(2)}
+                    </td>
+                    <td className="py-1.5 text-right font-mono text-white/70">
+                      ${Number(order.price).toFixed(2)}
+                    </td>
+                    <td
+                      className="py-1.5 text-right font-mono"
+                      style={{
+                        color: Number(order.pnl) >= 0 ? "#00FF88" : "#FF3366",
+                      }}
+                    >
+                      {Number(order.pnl) >= 0 ? "+" : ""}
+                      {order.pnl}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[10px]"
+                        style={{
+                          background: "rgba(0,255,136,0.1)",
+                          color: "#00FF88",
+                        }}
+                      >
+                        {order.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
