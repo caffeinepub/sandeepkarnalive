@@ -1,6 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
-  Activity,
   BarChart2,
   Bell,
   ChevronDown,
@@ -45,15 +44,15 @@ const TRADING_PAIRS = [
   { symbol: "BNBUSDT", base: "BNB", quote: "USDT", binance: "BNBUSDT" },
 ];
 
-const INTERVALS: Interval[] = ["15m", "1h", "4h", "1D", "1m"];
+const INTERVALS: Interval[] = ["1m", "15m", "1h", "4h", "1D"];
 const INDICATORS: Indicator[] = [
   "MA",
   "EMA",
+  "MACD",
   "BOLL",
   "Mark",
   "SAR",
   "MAVOL",
-  "MACD",
   "KL",
 ];
 
@@ -79,6 +78,7 @@ function TradingViewChart({
         height: "100%",
         border: "none",
         background: "#0B0B0D",
+        touchAction: "pinch-zoom",
       }}
       allow="fullscreen"
       title="TradingView Chart"
@@ -557,6 +557,10 @@ export function FutureTrading() {
 
   const [activeInterval, setActiveInterval] = useState<Interval>("1m");
   const [activeIndicators, setActiveIndicators] = useState<Indicator[]>([
+    "MA",
+    "EMA",
+    "MACD",
+    "BOLL",
     "Mark",
   ]);
   const [showPairSelector, setShowPairSelector] = useState(false);
@@ -565,8 +569,9 @@ export function FutureTrading() {
     "Chart" | "Overview" | "Data" | "Feed"
   >("Chart");
   const [qty, setQty] = useState("");
-  const [leverage, _setLeverage] = useState(20);
+  const [leverage, setLeverage] = useState(20);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Fetch real Binance price
   useEffect(() => {
@@ -626,14 +631,12 @@ export function FutureTrading() {
       toast.error("Enter a valid quantity");
       return;
     }
-    const margin = amount * price;
+    const margin = amount;
     if (!user || (user.balance || 0) < margin) {
       toast.error("Insufficient balance");
       return;
     }
-    // Deduct margin from balance
     updateUser({ balance: (user.balance || 0) - margin });
-    // Save position to localStorage
     const position = {
       id: `pos_${Date.now()}`,
       symbol: pair.binance,
@@ -653,7 +656,7 @@ export function FutureTrading() {
         JSON.stringify([...existing, position]),
       );
     } catch {}
-    toast.success(`${side} ${amount} ${pair.base} @ $${price.toFixed(2)}`, {
+    toast.success(`${side} $${amount} USDT @ $${price.toFixed(2)}`, {
       description: `Margin: $${margin.toFixed(2)} | ${leverage}x leverage | View in Positions`,
     });
     setQty("");
@@ -673,78 +676,190 @@ export function FutureTrading() {
   };
 
   return (
-    <div
-      className="fixed inset-0 flex flex-col overflow-hidden"
-      style={{
-        background: "#0B0B0D",
-        zIndex: 50,
-        fontFamily: "'Inter', sans-serif",
-      }}
-    >
-      {/* ── Section 1: Top Navigation ── */}
-      <header
-        className="flex-shrink-0"
-        style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
+    <>
+      <div
+        className="fixed inset-0 flex flex-col overflow-hidden"
+        style={{
+          background: "#0B0B0D",
+          zIndex: 50,
+          fontFamily: "'Inter', sans-serif",
+        }}
       >
-        <div className="flex items-center px-4 h-12">
-          {/* Orange hamburger circle */}
-          <div
-            className="flex items-center justify-center flex-shrink-0 mr-3 cursor-pointer"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
-              background: "#F2A23A",
-            }}
-          >
-            <div className="flex flex-col gap-[4px]">
-              <span
-                style={{
-                  display: "block",
-                  width: 14,
-                  height: 2,
-                  background: "#000",
-                  borderRadius: 1,
-                }}
-              />
-              <span
-                style={{
-                  display: "block",
-                  width: 14,
-                  height: 2,
-                  background: "#000",
-                  borderRadius: 1,
-                }}
-              />
-              <span
-                style={{
-                  display: "block",
-                  width: 10,
-                  height: 2,
-                  background: "#000",
-                  borderRadius: 1,
-                }}
-              />
+        {/* ── Section 1: Top Navigation ── */}
+        <header
+          className="flex-shrink-0"
+          style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
+        >
+          <div className="flex items-center px-4 h-12">
+            {/* Orange hamburger circle */}
+            <div
+              className="flex items-center justify-center flex-shrink-0 mr-3 cursor-pointer"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                background: "#F2A23A",
+              }}
+            >
+              <div className="flex flex-col gap-[4px]">
+                <span
+                  style={{
+                    display: "block",
+                    width: 14,
+                    height: 2,
+                    background: "#000",
+                    borderRadius: 1,
+                  }}
+                />
+                <span
+                  style={{
+                    display: "block",
+                    width: 14,
+                    height: 2,
+                    background: "#000",
+                    borderRadius: 1,
+                  }}
+                />
+                <span
+                  style={{
+                    display: "block",
+                    width: 10,
+                    height: 2,
+                    background: "#000",
+                    borderRadius: 1,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Nav tabs */}
+            <div className="flex items-center gap-0 flex-1 overflow-x-auto">
+              {(["Convert", "Spot", "Futures", "TradFi"] as const).map(
+                (tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    className="px-3 py-1 text-sm whitespace-nowrap flex-shrink-0"
+                    onClick={() => {
+                      if (tab === "Convert") navigate({ to: "/convert" });
+                      else if (tab === "Spot") navigate({ to: "/trading" });
+                      else if (tab === "TradFi") navigate({ to: "/tradefi" });
+                    }}
+                    style={{
+                      color: tab === "Futures" ? "#F5F6F8" : "#5E616A",
+                      fontWeight: tab === "Futures" ? 700 : 400,
+                      borderBottom:
+                        tab === "Futures"
+                          ? "2px solid #F5F6F8"
+                          : "2px solid transparent",
+                    }}
+                  >
+                    {tab}
+                  </button>
+                ),
+              )}
             </div>
           </div>
+        </header>
 
-          {/* Nav tabs */}
-          <div className="flex items-center gap-0 flex-1 overflow-x-auto">
-            {(["Convert", "Spot", "Futures", "TradFi"] as const).map((tab) => (
+        {/* ── Section 2: Pair Header ── */}
+        <div
+          className="flex-shrink-0 px-4 py-2"
+          style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <button
+                type="button"
+                onClick={() => setShowPairSelector((s) => !s)}
+                className="flex items-center gap-1"
+              >
+                <span
+                  style={{ color: "#F5F6F8", fontSize: 22, fontWeight: 700 }}
+                >
+                  {pair.symbol}
+                </span>
+                <ChevronDown
+                  style={{
+                    color: "#8A8F98",
+                    width: 16,
+                    height: 16,
+                    marginTop: 2,
+                  }}
+                />
+              </button>
+              <span
+                style={{
+                  color: "#E24A4A",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  marginTop: -2,
+                }}
+              >
+                {price24h.change >= 0 ? "+" : ""}
+                {price24h.change.toFixed(2)}%
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className="flex flex-col items-center justify-center px-2 py-0.5"
+                style={{
+                  border: "1px solid #29C784",
+                  borderRadius: 20,
+                  minWidth: 42,
+                }}
+              >
+                <span
+                  style={{
+                    color: "#29C784",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  MM
+                </span>
+                <span
+                  style={{ color: "#29C784", fontSize: 10, lineHeight: 1.2 }}
+                >
+                  0.00%
+                </span>
+              </div>
+              <div
+                className="flex items-center gap-2 px-2 py-1.5"
+                style={{ background: "#2A2D34", borderRadius: 20 }}
+              >
+                <BarChart2
+                  style={{ width: 16, height: 16, color: "#8A8F98" }}
+                />
+                <List style={{ width: 16, height: 16, color: "#8A8F98" }} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section 3: Sub-tabs ── */}
+        <div
+          className="flex-shrink-0 flex items-center justify-between px-4"
+          style={{
+            background: "#0B0B0D",
+            borderBottom: "1px solid #1C1E23",
+            height: 42,
+          }}
+        >
+          <div className="flex items-center gap-4">
+            {(["Chart", "Overview", "Data", "Feed"] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
-                className="px-3 py-1 text-sm whitespace-nowrap flex-shrink-0"
-                onClick={() => {
-                  if (tab === "Convert") navigate({ to: "/convert" });
-                  else if (tab === "Spot") navigate({ to: "/trading" });
-                  else if (tab === "TradFi") navigate({ to: "/tradefi" });
-                }}
+                onClick={() => setActiveSubTab(tab)}
                 style={{
-                  color: tab === "Futures" ? "#F5F6F8" : "#5E616A",
-                  fontWeight: tab === "Futures" ? 700 : 400,
+                  color: activeSubTab === tab ? "#F5F6F8" : "#6A6E78",
+                  fontSize: 14,
+                  fontWeight: activeSubTab === tab ? 600 : 400,
+                  paddingBottom: 4,
                   borderBottom:
-                    tab === "Futures"
+                    activeSubTab === tab
                       ? "2px solid #F5F6F8"
                       : "2px solid transparent",
                 }}
@@ -753,496 +868,553 @@ export function FutureTrading() {
               </button>
             ))}
           </div>
-        </div>
-      </header>
-
-      {/* ── Section 2: Pair Header ── */}
-      <div
-        className="flex-shrink-0 px-4 py-2"
-        style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
-      >
-        <div className="flex items-center justify-between">
-          {/* Left: pair + change */}
-          <div className="flex flex-col">
-            <button
-              type="button"
-              onClick={() => setShowPairSelector((s) => !s)}
-              className="flex items-center gap-1"
-            >
-              <span style={{ color: "#F5F6F8", fontSize: 22, fontWeight: 700 }}>
-                {pair.symbol}
-              </span>
-              <ChevronDown
+          <div className="flex items-center gap-4">
+            <Zap style={{ width: 20, height: 20, color: "#F5F6F8" }} />
+            <button type="button" onClick={() => setIsFavorite((f) => !f)}>
+              <Star
                 style={{
-                  color: "#8A8F98",
-                  width: 16,
-                  height: 16,
-                  marginTop: 2,
+                  width: 20,
+                  height: 20,
+                  color: isFavorite ? "#F2A23A" : "#F5F6F8",
+                  fill: isFavorite ? "#F2A23A" : "none",
                 }}
               />
             </button>
-            <span
+            <div className="relative">
+              <Bell style={{ width: 20, height: 20, color: "#F5F6F8" }} />
+              <span
+                className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
+                style={{ background: "#E24A4A" }}
+              />
+            </div>
+            <Share2 style={{ width: 20, height: 20, color: "#F5F6F8" }} />
+          </div>
+        </div>
+
+        {/* ── Section 4: Price (compact) ── */}
+        <div
+          className="flex-shrink-0 px-4 py-1.5"
+          style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex flex-col">
+              <span style={{ color: "#6A6E78", fontSize: 11 }}>
+                Last Traded Price ▾
+              </span>
+              <span
+                className="font-mono font-bold transition-colors duration-300"
+                style={{
+                  color: priceDisplayColor,
+                  fontSize: 28,
+                  lineHeight: 1.1,
+                }}
+              >
+                {price > 0
+                  ? price.toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  : "---"}
+              </span>
+              <span style={{ color: "#7B808B", fontSize: 11, marginTop: 1 }}>
+                Mark {markPrice > 0 ? markPrice.toFixed(2) : "---"}
+              </span>
+            </div>
+            <div className="flex flex-col items-end gap-0.5 text-right">
+              <div>
+                <span style={{ color: "#7B808B", fontSize: 10 }}>24h High</span>
+                <div
+                  style={{ color: "#F5F6F8", fontSize: 12, fontWeight: 500 }}
+                >
+                  {price24h.high > 0 ? price24h.high.toFixed(2) : "---"}
+                </div>
+              </div>
+              <div>
+                <span style={{ color: "#7B808B", fontSize: 10 }}>24h Low</span>
+                <div
+                  style={{ color: "#F5F6F8", fontSize: 12, fontWeight: 500 }}
+                >
+                  {price24h.low > 0 ? price24h.low.toFixed(2) : "---"}
+                </div>
+              </div>
+              <div>
+                <span style={{ color: "#7B808B", fontSize: 10 }}>Turnover</span>
+                <div
+                  style={{ color: "#F5F6F8", fontSize: 12, fontWeight: 500 }}
+                >
+                  {price24h.vol > 0 ? formatVol(price24h.vol) : "---"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section 5: Announcement banner ── */}
+        <AnimatePresence>
+          {showAnnouncement && (
+            <motion.div
+              initial={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="flex-shrink-0 flex items-center px-4 py-1.5 gap-2"
               style={{
-                color: "#E24A4A",
-                fontSize: 14,
-                fontWeight: 500,
-                marginTop: -2,
+                background: "#0B0B0D",
+                borderBottom: "1px solid #1C1E23",
               }}
             >
-              {price24h.change >= 0 ? "+" : ""}
-              {price24h.change.toFixed(2)}%
-            </span>
-          </div>
+              <span style={{ fontSize: 14 }}>📢</span>
+              <span style={{ color: "#F5F6F8", fontSize: 12, flex: 1 }}>
+                Delisting of CTSIUSDT Perpetual Contract
+              </span>
+              <button type="button" onClick={() => setShowAnnouncement(false)}>
+                <X style={{ width: 14, height: 14, color: "#8A8F98" }} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-          {/* Right: MM pill + icons pill */}
-          <div className="flex items-center gap-2">
-            {/* MM funding rate pill */}
-            <div
-              className="flex flex-col items-center justify-center px-2 py-0.5"
+        {/* ── Section 6: Combined sticky toolbar (intervals + indicators) ── */}
+        <div
+          className="flex-shrink-0 flex items-center gap-1 px-3 overflow-x-auto"
+          style={{
+            background: "#0B0B0D",
+            borderBottom: "1px solid #1C1E23",
+            height: 40,
+            scrollbarWidth: "none",
+          }}
+        >
+          {/* Time label */}
+          <span
+            style={{
+              color: "#6A6E78",
+              fontSize: 12,
+              flexShrink: 0,
+              marginRight: 2,
+            }}
+          >
+            Time
+          </span>
+          {/* Interval buttons */}
+          {INTERVALS.map((iv) => (
+            <button
+              key={iv}
+              type="button"
+              onClick={() => setActiveInterval(iv)}
+              className="px-2 py-0.5 flex-shrink-0"
               style={{
-                border: "1px solid #29C784",
-                borderRadius: 20,
-                minWidth: 42,
+                color: activeInterval === iv ? "#F5F6F8" : "#6A6E78",
+                fontWeight: activeInterval === iv ? 700 : 400,
+                fontSize: 12,
+                background:
+                  activeInterval === iv
+                    ? "rgba(245,246,248,0.08)"
+                    : "transparent",
+                borderRadius: 4,
+              }}
+            >
+              {iv}
+            </button>
+          ))}
+          {/* Separator */}
+          <div
+            style={{
+              width: 1,
+              height: 16,
+              background: "#2A2D34",
+              flexShrink: 0,
+              margin: "0 4px",
+            }}
+          />
+          {/* Indicator buttons */}
+          {INDICATORS.map((ind) => (
+            <button
+              key={ind}
+              type="button"
+              onClick={() => toggleIndicator(ind)}
+              className="flex-shrink-0 px-2 py-0.5"
+              style={{
+                color: activeIndicators.includes(ind) ? "#F5F6F8" : "#6A6E78",
+                fontWeight: activeIndicators.includes(ind) ? 700 : 400,
+                fontSize: 12,
+                background: activeIndicators.includes(ind)
+                  ? "rgba(242,162,58,0.12)"
+                  : "transparent",
+                borderRadius: 4,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {ind}
+            </button>
+          ))}
+          <div style={{ flex: 1 }} />
+          {/* Tool icons */}
+          <Pencil
+            style={{
+              width: 14,
+              height: 14,
+              color: "#6A6E78",
+              flexShrink: 0,
+              cursor: "pointer",
+            }}
+          />
+          <Radio
+            style={{
+              width: 14,
+              height: 14,
+              color: "#6A6E78",
+              flexShrink: 0,
+              cursor: "pointer",
+              marginLeft: 8,
+            }}
+          />
+          <Grid
+            style={{
+              width: 14,
+              height: 14,
+              color: "#6A6E78",
+              flexShrink: 0,
+              cursor: "pointer",
+              marginLeft: 8,
+            }}
+          />
+          {/* Fullscreen button — mobile only */}
+          <button
+            type="button"
+            className="lg:hidden flex items-center gap-1 px-2 py-1 rounded-lg ml-2 flex-shrink-0"
+            style={{ background: "#1A1D24", color: "#F5F6F8", fontSize: 11 }}
+            onClick={() => setIsFullscreen(true)}
+            data-ocid="futures.fullscreen_button"
+          >
+            <Maximize2 size={14} />
+            <span>Full</span>
+          </button>
+        </div>
+
+        {/* ── Section 7: Chart / Overview / Data / Feed ── */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            background: "#0B0B0D",
+            position: "relative",
+          }}
+        >
+          {activeSubTab === "Chart" && (
+            <TradingViewChart symbol={pair.binance} interval={activeInterval} />
+          )}
+          {activeSubTab === "Overview" && (
+            <OverviewTab price={price} markPrice={markPrice} pair={pair} />
+          )}
+          {activeSubTab === "Data" && <DataTab symbol={pair.binance} />}
+          {activeSubTab === "Feed" && <FeedTab />}
+        </div>
+
+        {/* ── Section 8: Bottom Trading Panel (compact) ── */}
+        <div
+          className="flex-shrink-0 px-3 pt-1.5 pb-1"
+          style={{ background: "#0D0F14", borderTop: "1px solid #1C1E23" }}
+        >
+          {/* Top row: Quantity USDT + Leverage selector */}
+          <div className="flex items-center gap-2 mb-1.5">
+            <div
+              className="flex-1 flex items-center gap-2 px-3 py-1.5"
+              style={{
+                background: "#1A1D24",
+                borderRadius: 10,
+                border: "1px solid #2A2D34",
               }}
             >
               <span
                 style={{
-                  color: "#29C784",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  lineHeight: 1.2,
+                  color: "#8A8F98",
+                  fontSize: 11,
+                  whiteSpace: "nowrap",
                 }}
               >
-                MM
+                Amount (USDT)
               </span>
-              <span style={{ color: "#29C784", fontSize: 10, lineHeight: 1.2 }}>
-                0.00%
+              <input
+                type="number"
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                placeholder="0.00"
+                className="bg-transparent text-right outline-none w-full text-sm font-bold"
+                style={{ color: "#F5F6F8", fontFamily: "monospace" }}
+                data-ocid="futures.input"
+              />
+              <span style={{ color: "#F0B90B", fontSize: 12, fontWeight: 700 }}>
+                USDT
               </span>
             </div>
-            {/* Candlestick + list icon pill */}
             <div
-              className="flex items-center gap-2 px-2 py-1.5"
-              style={{ background: "#2A2D34", borderRadius: 20 }}
-            >
-              <BarChart2 style={{ width: 16, height: 16, color: "#8A8F98" }} />
-              <List style={{ width: 16, height: 16, color: "#8A8F98" }} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Section 3: Sub-tabs ── */}
-      <div
-        className="flex-shrink-0 flex items-center justify-between px-4"
-        style={{
-          background: "#0B0B0D",
-          borderBottom: "1px solid #1C1E23",
-          height: 42,
-        }}
-      >
-        {/* Left tabs */}
-        <div className="flex items-center gap-4">
-          {(["Chart", "Overview", "Data", "Feed"] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveSubTab(tab)}
+              className="flex items-center gap-1 px-3 py-1.5"
               style={{
-                color: activeSubTab === tab ? "#F5F6F8" : "#6A6E78",
-                fontSize: 14,
-                fontWeight: activeSubTab === tab ? 600 : 400,
-                paddingBottom: 4,
-                borderBottom:
-                  activeSubTab === tab
-                    ? "2px solid #F5F6F8"
-                    : "2px solid transparent",
+                background: "#1A1D24",
+                borderRadius: 10,
+                border: "1px solid #2A2D34",
               }}
             >
-              {tab}
-            </button>
-          ))}
-        </div>
-        {/* Right icons */}
-        <div className="flex items-center gap-4">
-          <Zap style={{ width: 20, height: 20, color: "#F5F6F8" }} />
-          <button type="button" onClick={() => setIsFavorite((f) => !f)}>
-            <Star
-              style={{
-                width: 20,
-                height: 20,
-                color: isFavorite ? "#F2A23A" : "#F5F6F8",
-                fill: isFavorite ? "#F2A23A" : "none",
-              }}
-            />
-          </button>
-          <div className="relative">
-            <Bell style={{ width: 20, height: 20, color: "#F5F6F8" }} />
-            <span
-              className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
-              style={{ background: "#E24A4A" }}
-            />
-          </div>
-          <Share2 style={{ width: 20, height: 20, color: "#F5F6F8" }} />
-        </div>
-      </div>
-
-      {/* ── Section 4: Price ── */}
-      <div
-        className="flex-shrink-0 px-4 py-2"
-        style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
-      >
-        <div className="flex items-start justify-between">
-          {/* Left: price */}
-          <div className="flex flex-col">
-            <span style={{ color: "#6A6E78", fontSize: 12 }}>
-              Last Traded Price ▾
-            </span>
-            <span
-              className="font-mono font-bold transition-colors duration-300"
-              style={{
-                color: priceDisplayColor,
-                fontSize: 40,
-                lineHeight: 1.1,
-              }}
-            >
-              {price > 0
-                ? price.toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })
-                : "---"}
-            </span>
-            <span style={{ color: "#7B808B", fontSize: 13, marginTop: 2 }}>
-              Mark Price {markPrice > 0 ? markPrice.toFixed(2) : "---"}
-            </span>
-          </div>
-          {/* Right: 24h stats */}
-          <div className="flex flex-col items-end gap-0.5 text-right">
-            <div>
-              <span style={{ color: "#7B808B", fontSize: 11 }}>24h High</span>
-              <div style={{ color: "#F5F6F8", fontSize: 13, fontWeight: 500 }}>
-                {price24h.high > 0 ? price24h.high.toFixed(2) : "---"}
-              </div>
-            </div>
-            <div>
-              <span style={{ color: "#7B808B", fontSize: 11 }}>24h Low</span>
-              <div style={{ color: "#F5F6F8", fontSize: 13, fontWeight: 500 }}>
-                {price24h.low > 0 ? price24h.low.toFixed(2) : "---"}
-              </div>
-            </div>
-            <div>
-              <span style={{ color: "#7B808B", fontSize: 11 }}>
-                24h Turnover
-              </span>
-              <div style={{ color: "#F5F6F8", fontSize: 13, fontWeight: 500 }}>
-                {price24h.vol > 0 ? formatVol(price24h.vol) : "---"}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Section 5: Announcement banner ── */}
-      <AnimatePresence>
-        {showAnnouncement && (
-          <motion.div
-            initial={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="flex-shrink-0 flex items-center px-4 py-2 gap-2"
-            style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
-          >
-            <span style={{ fontSize: 16 }}>📢</span>
-            <span style={{ color: "#F5F6F8", fontSize: 12, flex: 1 }}>
-              Delisting of CTSIUSDT Perpetual Contract
-            </span>
-            <button type="button" onClick={() => setShowAnnouncement(false)}>
-              <X style={{ width: 16, height: 16, color: "#8A8F98" }} />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Section 6: Time interval row ── */}
-      <div
-        className="flex-shrink-0 flex items-center px-4"
-        style={{
-          background: "#0B0B0D",
-          borderBottom: "1px solid #1C1E23",
-          height: 38,
-        }}
-      >
-        {/* Time label */}
-        <span style={{ color: "#6A6E78", fontSize: 13, marginRight: 6 }}>
-          Time
-        </span>
-        {/* Interval buttons */}
-        {INTERVALS.map((iv) => (
-          <button
-            key={iv}
-            type="button"
-            onClick={() => setActiveInterval(iv)}
-            className="px-2 py-0.5"
-            style={{
-              color: activeInterval === iv ? "#F5F6F8" : "#6A6E78",
-              fontWeight: activeInterval === iv ? 700 : 400,
-              fontSize: 13,
-            }}
-          >
-            {iv}
-            {iv === "1m" ? " ▾" : ""}
-          </button>
-        ))}
-        {/* Separator */}
-        <div
-          className="w-px mx-2"
-          style={{ height: 16, background: "#2A2D34" }}
-        />
-        {/* Right icons */}
-        <span style={{ color: "#6A6E78", fontSize: 13 }}>Depth</span>
-        <div className="flex items-center gap-3 ml-3">
-          <div className="relative">
-            <Pencil style={{ width: 16, height: 16, color: "#F5F6F8" }} />
-          </div>
-          <div className="relative">
-            <Radio style={{ width: 16, height: 16, color: "#F5F6F8" }} />
-            <span
-              className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
-              style={{ background: "#E24A4A" }}
-            />
-          </div>
-          <div className="relative">
-            <Grid style={{ width: 16, height: 16, color: "#F5F6F8" }} />
-            <span
-              className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
-              style={{ background: "#E24A4A" }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Section 7: Chart / Overview / Data / Feed ── */}
-      <div className="flex-1 min-h-0" style={{ background: "#0B0B0D" }}>
-        {activeSubTab === "Chart" && (
-          <TradingViewChart symbol={pair.binance} interval={activeInterval} />
-        )}
-        {activeSubTab === "Overview" && (
-          <OverviewTab price={price} markPrice={markPrice} pair={pair} />
-        )}
-        {activeSubTab === "Data" && <DataTab symbol={pair.binance} />}
-        {activeSubTab === "Feed" && <FeedTab />}
-      </div>
-
-      {/* ── Section 8: Indicators row ── */}
-      <div
-        className="flex-shrink-0 flex items-center gap-1 px-4 overflow-x-auto"
-        style={{
-          background: "#0B0B0D",
-          borderTop: "1px solid #1C1E23",
-          height: 40,
-          scrollbarWidth: "none",
-        }}
-      >
-        {INDICATORS.map((ind) => (
-          <button
-            key={ind}
-            type="button"
-            onClick={() => toggleIndicator(ind)}
-            className="flex-shrink-0 px-2"
-            style={{
-              color: activeIndicators.includes(ind) ? "#F5F6F8" : "#6A6E78",
-              fontWeight: activeIndicators.includes(ind) ? 700 : 400,
-              fontSize: 13,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {ind}
-          </button>
-        ))}
-        <div className="flex-1" />
-        <Maximize2
-          style={{ width: 18, height: 18, color: "#6A6E78", flexShrink: 0 }}
-        />
-      </div>
-
-      {/* ── Section 9: Bottom Trading Panel ── */}
-      <div
-        className="flex-shrink-0 flex items-stretch gap-2 px-3 py-2"
-        style={{ background: "#0B0B0D", borderTop: "1px solid #1C1E23" }}
-      >
-        {/* Long pill */}
-        <button
-          type="button"
-          onClick={() => handleTrade("LONG")}
-          className="flex-1 flex flex-col items-center justify-center py-3 active:scale-95 transition-transform"
-          style={{ background: "#1FC57A", borderRadius: 9999 }}
-          data-ocid="futures.long_button"
-        >
-          <span style={{ color: "#FFFFFF", fontSize: 15, fontWeight: 500 }}>
-            Long
-          </span>
-          <span
-            style={{
-              color: "#FFFFFF",
-              fontSize: 17,
-              fontWeight: 700,
-              fontFamily: "monospace",
-            }}
-          >
-            {price > 0 ? price.toFixed(2) : "---"}
-          </span>
-        </button>
-
-        {/* Quantity pill */}
-        <div
-          className="flex flex-col items-center justify-center px-4 py-2"
-          style={{ background: "#2A2D34", borderRadius: 9999, minWidth: 90 }}
-        >
-          <span style={{ color: "#8A8F98", fontSize: 11 }}>Quantity</span>
-          <input
-            type="number"
-            value={qty}
-            onChange={(e) => setQty(e.target.value)}
-            placeholder={pair.base}
-            className="bg-transparent text-center outline-none w-full text-sm font-bold"
-            style={{ color: "#F5F6F8", fontFamily: "monospace" }}
-            data-ocid="futures.input"
-          />
-        </div>
-
-        {/* Short pill */}
-        <button
-          type="button"
-          onClick={() => handleTrade("SHORT")}
-          className="flex-1 flex flex-col items-center justify-center py-3 active:scale-95 transition-transform"
-          style={{ background: "#E24A4A", borderRadius: 9999 }}
-          data-ocid="futures.short_button"
-        >
-          <span style={{ color: "#FFFFFF", fontSize: 15, fontWeight: 500 }}>
-            Short
-          </span>
-          <span
-            style={{
-              color: "#FFFFFF",
-              fontSize: 17,
-              fontWeight: 700,
-              fontFamily: "monospace",
-            }}
-          >
-            {price > 0 ? (price - 0.01).toFixed(2) : "---"}
-          </span>
-        </button>
-      </div>
-
-      {/* ── Section 10: Bottom App Nav ── */}
-      <nav
-        className="flex-shrink-0 flex items-center justify-around py-2"
-        style={{ background: "#14161B", borderTop: "1px solid #1C1E23" }}
-      >
-        {[
-          { icon: <Home size={24} />, label: "Home", to: "/" },
-          { icon: <TrendingUp size={24} />, label: "Markets", to: "/crypto" },
-          {
-            icon: <BarChart2 size={24} />,
-            label: "Trade",
-            to: "/futures",
-            active: true,
-          },
-          {
-            icon: <PieChart size={24} />,
-            label: "Positions",
-            to: "/positions",
-          },
-          { icon: <Wallet size={24} />, label: "Assets", to: "/wallet" },
-        ].map((item) => (
-          <Link
-            key={item.label}
-            to={item.to}
-            className="flex flex-col items-center gap-0.5"
-            data-ocid={`nav.${item.label.toLowerCase()}_link`}
-          >
-            <span style={{ color: item.active ? "#F5F6F8" : "#6A6E78" }}>
-              {item.icon}
-            </span>
-            <span
-              style={{
-                color: item.active ? "#F5F6F8" : "#6A6E78",
-                fontSize: 11,
-              }}
-            >
-              {item.label}
-            </span>
-          </Link>
-        ))}
-      </nav>
-
-      {/* ── Pair Selector Modal ── */}
-      <AnimatePresence>
-        {showPairSelector && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 flex items-start justify-center pt-20"
-            style={{ background: "rgba(0,0,0,0.7)", zIndex: 100 }}
-            onClick={() => setShowPairSelector(false)}
-          >
-            <motion.div
-              initial={{ y: -20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -20, opacity: 0 }}
-              className="rounded-2xl p-4 w-72"
-              style={{ background: "#1C1E23", border: "1px solid #2A2D34" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span style={{ color: "#F5F6F8", fontWeight: 700 }}>
-                  Select Pair
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowPairSelector(false)}
-                >
-                  <X style={{ width: 18, height: 18, color: "#8A8F98" }} />
-                </button>
-              </div>
-              <div
-                className="flex items-center gap-2 px-3 py-2 rounded-xl mb-3"
-                style={{ background: "#0B0B0D" }}
+              <span style={{ color: "#8A8F98", fontSize: 11 }}>Lev</span>
+              <select
+                value={leverage}
+                onChange={(e) => setLeverage(Number(e.target.value))}
+                className="bg-transparent outline-none text-sm font-bold cursor-pointer"
+                style={{
+                  color: "#F0B90B",
+                  fontFamily: "monospace",
+                  border: "none",
+                }}
+                data-ocid="futures.leverage_select"
               >
-                <Search style={{ width: 14, height: 14, color: "#8A8F98" }} />
-                <input
-                  placeholder="Search pairs..."
-                  className="flex-1 bg-transparent text-sm outline-none"
-                  style={{ color: "#F5F6F8" }}
-                />
-              </div>
-              {TRADING_PAIRS.map((p) => (
-                <button
-                  key={p.symbol}
-                  type="button"
-                  className="w-full flex items-center justify-between px-3 py-3 rounded-xl hover:bg-white/5 transition-colors"
-                  onClick={() => {
-                    setPair(p);
-                    setShowPairSelector(false);
+                {[1, 2, 3, 5, 10, 20, 25, 50, 75, 100].map((lv) => (
+                  <option
+                    key={lv}
+                    value={lv}
+                    style={{ background: "#1A1D24", color: "#F5F6F8" }}
+                  >
+                    {lv}x
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {/* Long / Short buttons */}
+          <div className="flex items-stretch gap-2">
+            {/* Long button */}
+            <button
+              type="button"
+              onClick={() => handleTrade("LONG")}
+              className="flex-1 flex flex-col items-center justify-center py-2 active:scale-95 transition-all"
+              style={{
+                background: "linear-gradient(135deg, #0ECB81 0%, #0AA066 100%)",
+                borderRadius: 14,
+                boxShadow:
+                  "0 0 18px rgba(14,203,129,0.4), inset 0 1px 0 rgba(255,255,255,0.15)",
+                border: "1px solid rgba(14,203,129,0.3)",
+              }}
+              data-ocid="futures.long_button"
+            >
+              <div className="flex items-center gap-1 mb-0.5">
+                <span
+                  style={{
+                    color: "#FFFFFF",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    letterSpacing: "0.5px",
                   }}
                 >
-                  <span
-                    style={{
-                      color: pair.symbol === p.symbol ? "#F2A23A" : "#F5F6F8",
-                      fontWeight: 600,
+                  ▲ LONG
+                </span>
+              </div>
+              <span
+                style={{
+                  color: "rgba(255,255,255,0.9)",
+                  fontSize: 15,
+                  fontWeight: 800,
+                  fontFamily: "monospace",
+                  letterSpacing: "0.3px",
+                }}
+              >
+                {price > 0 ? price.toFixed(2) : "---"}
+              </span>
+            </button>
+
+            {/* Short button */}
+            <button
+              type="button"
+              onClick={() => handleTrade("SHORT")}
+              className="flex-1 flex flex-col items-center justify-center py-2 active:scale-95 transition-all"
+              style={{
+                background: "linear-gradient(135deg, #F6465D 0%, #C43346 100%)",
+                borderRadius: 14,
+                boxShadow:
+                  "0 0 18px rgba(246,70,93,0.4), inset 0 1px 0 rgba(255,255,255,0.15)",
+                border: "1px solid rgba(246,70,93,0.3)",
+              }}
+              data-ocid="futures.short_button"
+            >
+              <div className="flex items-center gap-1 mb-0.5">
+                <span
+                  style={{
+                    color: "#FFFFFF",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  ▼ SHORT
+                </span>
+              </div>
+              <span
+                style={{
+                  color: "rgba(255,255,255,0.9)",
+                  fontSize: 15,
+                  fontWeight: 800,
+                  fontFamily: "monospace",
+                  letterSpacing: "0.3px",
+                }}
+              >
+                {price > 0 ? (price - 0.01).toFixed(2) : "---"}
+              </span>
+              <span
+                style={{
+                  color: "rgba(255,255,255,0.6)",
+                  fontSize: 10,
+                  marginTop: 1,
+                }}
+              >
+                {leverage}x · Liq: $
+                {price > 0 && qty
+                  ? (price - (price / leverage) * 0.9).toFixed(0)
+                  : "---"}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* ── Section 9: Bottom App Nav ── */}
+        <nav
+          className="flex-shrink-0 flex items-center justify-around py-2"
+          style={{ background: "#14161B", borderTop: "1px solid #1C1E23" }}
+        >
+          {[
+            { icon: <Home size={24} />, label: "Home", to: "/" },
+            {
+              icon: <TrendingUp size={24} />,
+              label: "Markets",
+              to: "/crypto",
+            },
+            {
+              icon: <BarChart2 size={24} />,
+              label: "Trade",
+              to: "/futures",
+              active: true,
+            },
+            {
+              icon: <PieChart size={24} />,
+              label: "Positions",
+              to: "/positions",
+            },
+            { icon: <Wallet size={24} />, label: "Assets", to: "/wallet" },
+          ].map((item) => (
+            <Link
+              key={item.label}
+              to={item.to}
+              className="flex flex-col items-center gap-0.5"
+              data-ocid={`nav.${item.label.toLowerCase()}_link`}
+            >
+              <span style={{ color: item.active ? "#F5F6F8" : "#6A6E78" }}>
+                {item.icon}
+              </span>
+              <span
+                style={{
+                  color: item.active ? "#F5F6F8" : "#6A6E78",
+                  fontSize: 11,
+                }}
+              >
+                {item.label}
+              </span>
+            </Link>
+          ))}
+        </nav>
+
+        {/* ── Pair Selector Modal ── */}
+        <AnimatePresence>
+          {showPairSelector && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 flex items-start justify-center pt-20"
+              style={{ background: "rgba(0,0,0,0.7)", zIndex: 100 }}
+              onClick={() => setShowPairSelector(false)}
+            >
+              <motion.div
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -20, opacity: 0 }}
+                className="rounded-2xl p-4 w-72"
+                style={{ background: "#1C1E23", border: "1px solid #2A2D34" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span style={{ color: "#F5F6F8", fontWeight: 700 }}>
+                    Select Pair
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPairSelector(false)}
+                  >
+                    <X style={{ width: 18, height: 18, color: "#8A8F98" }} />
+                  </button>
+                </div>
+                <div
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl mb-3"
+                  style={{ background: "#0B0B0D" }}
+                >
+                  <Search style={{ width: 14, height: 14, color: "#8A8F98" }} />
+                  <input
+                    placeholder="Search pairs..."
+                    className="flex-1 bg-transparent text-sm outline-none"
+                    style={{ color: "#F5F6F8" }}
+                  />
+                </div>
+                {TRADING_PAIRS.map((p) => (
+                  <button
+                    key={p.symbol}
+                    type="button"
+                    className="w-full flex items-center justify-between px-3 py-3 rounded-xl hover:bg-white/5 transition-colors"
+                    onClick={() => {
+                      setPair(p);
+                      setShowPairSelector(false);
                     }}
                   >
-                    {p.symbol}
-                  </span>
-                  <span style={{ color: "#6A6E78", fontSize: 12 }}>
-                    Perpetual
-                  </span>
-                </button>
-              ))}
+                    <span
+                      style={{
+                        color: pair.symbol === p.symbol ? "#F2A23A" : "#F5F6F8",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {p.symbol}
+                    </span>
+                    <span style={{ color: "#6A6E78", fontSize: 12 }}>
+                      Perpetual
+                    </span>
+                  </button>
+                ))}
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ── Fullscreen Chart Overlay ── */}
+      {isFullscreen && (
+        <div
+          className="fixed inset-0 flex flex-col"
+          style={{ background: "#0B0B0D", zIndex: 200 }}
+        >
+          {/* Close bar */}
+          <div
+            className="flex-shrink-0 flex items-center justify-between px-4"
+            style={{ height: 44, borderBottom: "1px solid #1C1E23" }}
+          >
+            <span style={{ color: "#F5F6F8", fontWeight: 700, fontSize: 15 }}>
+              {pair.symbol} Perpetual
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(false)}
+              data-ocid="futures.close_button"
+            >
+              <X style={{ width: 24, height: 24, color: "#F5F6F8" }} />
+            </button>
+          </div>
+          {/* Chart fills remaining space */}
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <TradingViewChart symbol={pair.binance} interval={activeInterval} />
+          </div>
+        </div>
+      )}
+    </>
   );
 }

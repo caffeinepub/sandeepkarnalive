@@ -288,6 +288,37 @@ function TradingHub() {
       return 0;
     }
   });
+  const [btcPrice, setBtcPrice] = useState(0);
+  const [ethPrice, setEthPrice] = useState(0);
+  const [solPrice, setSolPrice] = useState(0);
+  const [activePair, setActivePair] = useState<
+    "BTC/USDT" | "ETH/USDT" | "SOL/USDT"
+  >("BTC/USDT");
+  const [selectedLev, setSelectedLev] = useState(20);
+
+  useEffect(() => {
+    async function fetchPrices() {
+      try {
+        const [b, e, s] = await Promise.all([
+          fetch(
+            "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
+          ).then((r) => r.json()),
+          fetch(
+            "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT",
+          ).then((r) => r.json()),
+          fetch(
+            "https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT",
+          ).then((r) => r.json()),
+        ]);
+        setBtcPrice(Number.parseFloat(b.price));
+        setEthPrice(Number.parseFloat(e.price));
+        setSolPrice(Number.parseFloat(s.price));
+      } catch {}
+    }
+    fetchPrices();
+    const iv = setInterval(fetchPrices, 10000);
+    return () => clearInterval(iv);
+  }, []);
 
   const tiers = [
     { label: "BEGINNER", leverage: "20x", min: 0, max: 10, color: "#FF8C00" },
@@ -300,7 +331,6 @@ function TradingHub() {
       color: "#FFD700",
     },
   ];
-
   const currentTierIdx = tradeCount >= 50 ? 2 : tradeCount >= 10 ? 1 : 0;
   const currentTier = tiers[currentTierIdx];
   const nextTier = tiers[currentTierIdx + 1];
@@ -310,18 +340,18 @@ function TradingHub() {
   const tradesNeeded = nextTier ? nextTier.min - tradeCount : 0;
 
   return (
-    <section className="pt-28 pb-0 px-4 relative z-10">
+    <section className="pt-28 pb-0 px-3 relative z-10">
       <div className="max-w-5xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="rounded-2xl p-5 relative overflow-hidden"
+          className="rounded-2xl relative overflow-hidden"
           style={{
-            background: "rgba(20,5,0,0.95)",
-            border: "1px solid rgba(255,100,0,0.3)",
+            background: "linear-gradient(135deg, #0D0F14 0%, #130800 100%)",
+            border: "1px solid rgba(255,100,0,0.35)",
             boxShadow:
-              "0 0 40px rgba(255,80,0,0.2), inset 0 0 60px rgba(255,60,0,0.04)",
+              "0 0 60px rgba(255,80,0,0.18), 0 0 120px rgba(255,80,0,0.08), inset 0 0 80px rgba(255,60,0,0.04)",
           }}
         >
           {/* Fire radial glow */}
@@ -329,43 +359,147 @@ function TradingHub() {
             className="absolute inset-0 pointer-events-none"
             style={{
               background:
-                "radial-gradient(ellipse at 50% 0%, rgba(255,80,0,0.15) 0%, transparent 65%)",
+                "radial-gradient(ellipse at 50% 0%, rgba(255,80,0,0.2) 0%, transparent 65%)",
             }}
           />
 
-          {/* Header */}
-          <div className="flex items-center justify-between mb-4 relative z-10">
-            <div className="flex items-center gap-2">
-              <Zap className="w-5 h-5" style={{ color: "#FF6B00" }} />
-              <span className="font-bold text-white text-base tracking-widest uppercase">
-                ⚡ Leverage Trading
-              </span>
+          {/* Animated top glow line */}
+          <div
+            style={{
+              height: 2,
+              background:
+                "linear-gradient(90deg, transparent 0%, #FF6B00 40%, #FFD700 60%, transparent 100%)",
+              opacity: 0.7,
+            }}
+          />
+
+          <div className="p-4 relative z-10">
+            {/* Header row */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: "rgba(255,107,0,0.2)",
+                    border: "1px solid rgba(255,107,0,0.5)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Zap className="w-4 h-4" style={{ color: "#FF6B00" }} />
+                </div>
+                <div>
+                  <div className="font-black text-white text-sm tracking-widest uppercase">
+                    ⚡ BEAST TRADING HUB
+                  </div>
+                  <div
+                    style={{
+                      color: "rgba(255,107,0,0.8)",
+                      fontSize: 10,
+                      fontWeight: 600,
+                    }}
+                  >
+                    REAL MONEY · REAL TRADING
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-xs font-bold px-2 py-0.5 rounded-full animate-pulse"
+                  style={{
+                    background: "rgba(14,203,129,0.15)",
+                    border: "1px solid rgba(14,203,129,0.4)",
+                    color: "#0ECB81",
+                  }}
+                >
+                  ● LIVE
+                </span>
+              </div>
             </div>
-            <span
-              className="text-xs font-bold px-2 py-0.5 rounded-full animate-pulse"
+
+            {/* Live Prices Row */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {[
+                {
+                  label: "BTC/USDT",
+                  price: btcPrice,
+                  pair: "BTC/USDT" as const,
+                },
+                {
+                  label: "ETH/USDT",
+                  price: ethPrice,
+                  pair: "ETH/USDT" as const,
+                },
+                {
+                  label: "SOL/USDT",
+                  price: solPrice,
+                  pair: "SOL/USDT" as const,
+                },
+              ].map((item) => (
+                <button
+                  key={item.pair}
+                  type="button"
+                  onClick={() => setActivePair(item.pair)}
+                  className="flex flex-col items-center py-2 px-1 rounded-xl transition-all"
+                  style={{
+                    background:
+                      activePair === item.pair
+                        ? "rgba(255,107,0,0.15)"
+                        : "rgba(255,255,255,0.04)",
+                    border:
+                      activePair === item.pair
+                        ? "1px solid rgba(255,107,0,0.5)"
+                        : "1px solid rgba(255,255,255,0.08)",
+                    boxShadow:
+                      activePair === item.pair
+                        ? "0 0 12px rgba(255,107,0,0.2)"
+                        : "none",
+                  }}
+                >
+                  <span
+                    style={{ color: "#8A8F98", fontSize: 9, fontWeight: 600 }}
+                  >
+                    {item.label}
+                  </span>
+                  <span
+                    style={{
+                      color: activePair === item.pair ? "#FFD700" : "#F5F6F8",
+                      fontSize: 14,
+                      fontWeight: 800,
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    {item.price > 0
+                      ? item.price > 999
+                        ? `$${(item.price).toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+                        : `$${item.price.toFixed(2)}`
+                      : "---"}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Leverage Tier */}
+            <div
+              className="flex items-center gap-3 mb-3 p-3 rounded-xl"
               style={{
-                background: "rgba(255,80,0,0.2)",
-                border: "1px solid rgba(255,80,0,0.5)",
-                color: "#FF6B00",
+                background: "rgba(0,0,0,0.3)",
+                border: "1px solid rgba(255,255,255,0.06)",
               }}
             >
-              LIVE
-            </span>
-          </div>
-
-          {/* Current Leverage + Progress */}
-          <div className="relative z-10 mb-5">
-            <div className="flex items-center gap-3 mb-2">
-              <div
-                className="font-black text-4xl tracking-tight"
-                style={{
-                  color: currentTier.color,
-                  textShadow: `0 0 20px ${currentTier.color}80`,
-                }}
-              >
-                {currentTier.leverage}
-              </div>
               <div>
+                <div
+                  className="font-black text-3xl tracking-tight"
+                  style={{
+                    color: currentTier.color,
+                    textShadow: `0 0 20px ${currentTier.color}80`,
+                  }}
+                >
+                  {currentTier.leverage}
+                </div>
                 <div
                   className="text-xs font-bold"
                   style={{ color: currentTier.color }}
@@ -374,102 +508,118 @@ function TradingHub() {
                 </div>
                 <div className="text-white/40 text-xs">YOUR LEVERAGE</div>
               </div>
-              {nextTier && (
-                <div className="flex items-center gap-1 ml-2 text-white/30 text-sm">
-                  <span>→ {nextTier.leverage}</span>
-                  <span>→ {tiers[2].leverage}</span>
-                </div>
-              )}
-            </div>
-
-            {nextTier && (
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-white/50">
-                    {tradeCount} trades done
-                  </span>
-                  <span style={{ color: nextTier.color }}>
-                    {tradesNeeded} more to unlock {nextTier.leverage}
-                  </span>
-                </div>
-                <div
-                  className="h-2 rounded-full overflow-hidden"
-                  style={{ background: "rgba(255,255,255,0.07)" }}
-                >
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(progress, 100)}%` }}
-                    transition={{ duration: 1, ease: "easeOut" }}
-                    className="h-full rounded-full"
-                    style={{
-                      background: `linear-gradient(90deg, #FF6B00, ${currentTier.color})`,
-                    }}
-                  />
+              <div className="flex-1">
+                {nextTier && (
+                  <>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-white/50">{tradeCount} trades</span>
+                      <span style={{ color: nextTier.color }}>
+                        {tradesNeeded} → {nextTier.leverage}
+                      </span>
+                    </div>
+                    <div
+                      className="h-2 rounded-full overflow-hidden"
+                      style={{ background: "rgba(255,255,255,0.08)" }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(progress, 100)}%`,
+                          background: `linear-gradient(90deg, ${currentTier.color}, ${nextTier.color})`,
+                          boxShadow: `0 0 8px ${nextTier.color}60`,
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-2 mt-2">
+                  {tiers.map((tier, i) => (
+                    <div
+                      key={tier.label}
+                      className="flex-1 text-center py-1 rounded-lg"
+                      style={{
+                        background:
+                          i <= currentTierIdx
+                            ? "rgba(255,107,0,0.15)"
+                            : "rgba(255,255,255,0.04)",
+                        border: `1px solid ${i <= currentTierIdx ? "rgba(255,107,0,0.4)" : "rgba(255,255,255,0.06)"}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: i <= currentTierIdx ? tier.color : "#6A6E78",
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {tier.leverage}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* 3 Tier Steps */}
-          <div className="grid grid-cols-3 gap-3 relative z-10 mb-5">
-            {tiers.map((tier, i) => {
-              const active = i === currentTierIdx;
-              const unlocked = i <= currentTierIdx;
-              return (
-                <div
-                  key={tier.label}
-                  className="rounded-xl p-3 text-center transition-all"
-                  style={{
-                    background: active
-                      ? `${tier.color}18`
-                      : "rgba(255,255,255,0.03)",
-                    border: `1px solid ${active ? `${tier.color}60` : "rgba(255,255,255,0.07)"}`,
-                    boxShadow: active ? `0 0 20px ${tier.color}30` : "none",
-                    opacity: unlocked ? 1 : 0.45,
-                  }}
-                >
-                  <div
-                    className="text-xs font-bold mb-1"
-                    style={{ color: unlocked ? tier.color : "#fff5" }}
+            {/* Quick Leverage selector */}
+            <div className="flex items-center gap-2 mb-3">
+              <span style={{ color: "#8A8F98", fontSize: 11 }}>
+                Quick Leverage:
+              </span>
+              <div className="flex gap-1 flex-1">
+                {[10, 20, 50, 75, 100].map((lv) => (
+                  <button
+                    key={lv}
+                    type="button"
+                    onClick={() => setSelectedLev(lv)}
+                    className="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all"
+                    style={{
+                      background:
+                        selectedLev === lv
+                          ? "rgba(255,107,0,0.25)"
+                          : "rgba(255,255,255,0.06)",
+                      border:
+                        selectedLev === lv
+                          ? "1px solid rgba(255,107,0,0.6)"
+                          : "1px solid rgba(255,255,255,0.08)",
+                      color: selectedLev === lv ? "#FF6B00" : "#8A8F98",
+                      boxShadow:
+                        selectedLev === lv
+                          ? "0 0 8px rgba(255,107,0,0.3)"
+                          : "none",
+                    }}
                   >
-                    STEP {i + 1}
-                  </div>
-                  <div
-                    className="font-black text-xl"
-                    style={{ color: active ? tier.color : "#fff7" }}
-                  >
-                    {tier.leverage}
-                  </div>
-                  <div
-                    className="text-xs mt-1"
-                    style={{ color: active ? `${tier.color}cc` : "#fff4" }}
-                  >
-                    {tier.label}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                    {lv}x
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          {/* CTA Button */}
-          <div className="relative z-10">
+            {/* CTA Button */}
             <Link to="/futures">
               <motion.button
                 type="button"
                 data-ocid="home.trade_now.primary_button"
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
-                className="w-full py-3.5 rounded-xl font-black text-base tracking-wider flex items-center justify-center gap-2"
+                className="w-full py-4 rounded-xl font-black text-base tracking-wider flex items-center justify-center gap-2 relative overflow-hidden"
                 style={{
                   background: "linear-gradient(135deg, #FF6B00, #FF3300)",
                   boxShadow:
-                    "0 0 30px rgba(255,80,0,0.4), 0 4px 20px rgba(255,50,0,0.3)",
+                    "0 0 30px rgba(255,80,0,0.5), 0 4px 20px rgba(255,50,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)",
                   color: "#fff",
                   textShadow: "0 1px 4px rgba(0,0,0,0.5)",
                 }}
               >
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)",
+                    animation: "shimmer 2s infinite",
+                  }}
+                />
                 <Zap className="w-5 h-5" />
-                TRADE NOW — EARN NOW
+                TRADE NOW · {selectedLev}x LEVERAGE · LIVE {activePair}
                 <ArrowRight className="w-5 h-5" />
               </motion.button>
             </Link>

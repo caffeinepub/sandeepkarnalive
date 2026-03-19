@@ -625,7 +625,6 @@ function TradeModal({ ad, onClose }: { ad: P2PAd; onClose: () => void }) {
           >
             Upload Payment Proof
           </p>
-          {/* biome-ignore lint/a11y/noLabelWithoutControl: label wraps file input */}
           <label
             data-ocid="p2p.upload_button"
             className="flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer w-fit text-sm"

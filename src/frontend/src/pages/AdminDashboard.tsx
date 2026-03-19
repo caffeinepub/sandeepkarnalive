@@ -111,24 +111,6 @@ function getSCEUsers() {
   }
 }
 
-function getPendingTx() {
-  const users = getSCEUsers();
-  let deposits: any[] = [];
-  let withdrawals: any[] = [];
-  for (const u of users) {
-    const txs = JSON.parse(
-      localStorage.getItem(`sce_tx_${u.username}`) || "[]",
-    );
-    for (const tx of txs) {
-      if (tx.type === "deposit" && tx.status === "pending")
-        deposits.push({ ...tx, username: u.username });
-      if (tx.type === "withdrawal" && tx.status === "pending")
-        withdrawals.push({ ...tx, username: u.username });
-    }
-  }
-  return { deposits, withdrawals };
-}
-
 function loadLS<T>(key: string, def: T): T {
   try {
     return JSON.parse(localStorage.getItem(key) || "null") ?? def;
@@ -625,12 +607,8 @@ export function AdminDashboard() {
   });
 
   const [users, setUsers] = useState<any[]>(() => getSCEUsers());
-  const [deposits, setDeposits] = useState<any[]>(
-    () => getPendingTx().deposits,
-  );
-  const [withdrawals, setWithdrawals] = useState<any[]>(
-    () => getPendingTx().withdrawals,
-  );
+  const [deposits, setDeposits] = useState<any[]>([]);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
 
   const [canisterUsers, setCanisterUsers] = React.useState<any[]>([]);
   const [kycSubmissions, setKycSubmissions] = React.useState<any[]>([]);
@@ -672,9 +650,6 @@ export function AdminDashboard() {
     function refresh() {
       const allUsrs = getSCEUsers();
       setUsers(allUsrs);
-      const { deposits: d, withdrawals: w } = getPendingTx();
-      setDeposits(d);
-      setWithdrawals(w);
       // Load KYC submissions
       const subs: any[] = [];
       for (const u of allUsrs) {
@@ -695,19 +670,55 @@ export function AdminDashboard() {
     };
   }, []);
 
-  // Fetch canister users periodically
+  // Fetch canister users, deposits, withdrawals periodically
   useEffect(() => {
-    async function fetchCanisterUsers() {
+    async function fetchCanisterData() {
       if (!actor) return;
       try {
-        const result = await (actor as any).getAllUsers();
-        if (Array.isArray(result)) setCanisterUsers(result);
+        const [users, deps, withs] = await Promise.all([
+          (actor as any).getAllUsers(),
+          (actor as any).getAllDeposits(),
+          (actor as any).getAllWithdrawals(),
+        ]);
+        if (Array.isArray(users)) setCanisterUsers(users);
+        if (Array.isArray(deps)) {
+          const pending = deps.filter(
+            (d: any) => d.status && "pending" in d.status,
+          );
+          setDeposits(
+            pending.map((d: any) => ({
+              id: Number(d.id),
+              username: d.username,
+              currency: d.currency,
+              amount: d.amount,
+              txHash: d.txHash,
+              createdAt: Number(d.createdAt),
+              _source: "canister",
+            })),
+          );
+        }
+        if (Array.isArray(withs)) {
+          const pending = withs.filter(
+            (w: any) => w.status && "pending" in w.status,
+          );
+          setWithdrawals(
+            pending.map((w: any) => ({
+              id: Number(w.id),
+              username: w.username,
+              currency: w.currency,
+              amount: (Number(w.amount) / 1_000_000).toFixed(2),
+              walletAddress: w.walletAddress,
+              createdAt: Number(w.createdAt),
+              _source: "canister",
+            })),
+          );
+        }
       } catch {
         // silent fail
       }
     }
-    fetchCanisterUsers();
-    const interval = setInterval(fetchCanisterUsers, 5000);
+    fetchCanisterData();
+    const interval = setInterval(fetchCanisterData, 4000);
     return () => clearInterval(interval);
   }, [actor]);
 
@@ -2234,46 +2245,21 @@ export function AdminDashboard() {
                             data-ocid="admin.confirm_button"
                             size="sm"
                             className="bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 h-8 text-xs"
-                            onClick={() => {
-                              const us = getSCEUsers();
-                              for (const u of us) {
-                                const key = `sce_tx_${u.username}`;
-                                const txs = JSON.parse(
-                                  localStorage.getItem(key) || "[]",
+                            onClick={async () => {
+                              try {
+                                await (actor as any).approveDeposit(
+                                  BigInt(d.id),
                                 );
-                                const idx = txs.findIndex(
-                                  (t: any) =>
-                                    t.type === "deposit" &&
-                                    t.txHash === d.txHash &&
-                                    t.status === "pending",
+                                toast.success(
+                                  `Deposit approved for ${d.username}`,
                                 );
-                                if (idx !== -1) {
-                                  txs[idx].status = "approved";
-                                  const ui = us.findIndex(
-                                    (u2: any) => u2.username === u.username,
-                                  );
-                                  if (ui !== -1) {
-                                    us[ui].balance =
-                                      (us[ui].balance || 0) +
-                                      Number.parseFloat(txs[idx].amount);
-                                    us[ui].totalDeposited =
-                                      (us[ui].totalDeposited || 0) +
-                                      Number.parseFloat(txs[idx].amount);
-                                    localStorage.setItem(
-                                      "sce_users",
-                                      JSON.stringify(us),
-                                    );
-                                  }
-                                  localStorage.setItem(
-                                    key,
-                                    JSON.stringify(txs),
-                                  );
-                                  toast.success(
-                                    `Deposit approved for ${u.username}`,
-                                  );
-                                  window.location.reload();
-                                  break;
-                                }
+                                setDeposits((prev) =>
+                                  prev.filter((x) => x.id !== d.id),
+                                );
+                              } catch (e: any) {
+                                toast.error(
+                                  `Approve failed: ${e?.message || e}`,
+                                );
                               }
                             }}
                           >
@@ -2284,31 +2270,21 @@ export function AdminDashboard() {
                             size="sm"
                             variant="ghost"
                             className="text-red-400 border border-red-500/30 hover:bg-red-500/10 h-8 text-xs"
-                            onClick={() => {
-                              const us = getSCEUsers();
-                              for (const u of us) {
-                                const key = `sce_tx_${u.username}`;
-                                const txs = JSON.parse(
-                                  localStorage.getItem(key) || "[]",
+                            onClick={async () => {
+                              try {
+                                await (actor as any).rejectDeposit(
+                                  BigInt(d.id),
                                 );
-                                const idx = txs.findIndex(
-                                  (t: any) =>
-                                    t.type === "deposit" &&
-                                    t.txHash === d.txHash &&
-                                    t.status === "pending",
+                                toast.error(
+                                  `Deposit rejected for ${d.username}`,
                                 );
-                                if (idx !== -1) {
-                                  txs[idx].status = "rejected";
-                                  localStorage.setItem(
-                                    key,
-                                    JSON.stringify(txs),
-                                  );
-                                  toast.error(
-                                    `Deposit rejected for ${u.username}`,
-                                  );
-                                  window.location.reload();
-                                  break;
-                                }
+                                setDeposits((prev) =>
+                                  prev.filter((x) => x.id !== d.id),
+                                );
+                              } catch (e: any) {
+                                toast.error(
+                                  `Reject failed: ${e?.message || e}`,
+                                );
                               }
                             }}
                           >
@@ -2361,45 +2337,21 @@ export function AdminDashboard() {
                             data-ocid="admin.confirm_button"
                             size="sm"
                             className="bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 h-8 text-xs"
-                            onClick={() => {
-                              const us = getSCEUsers();
-                              for (const u of us) {
-                                const key = `sce_tx_${u.username}`;
-                                const txs = JSON.parse(
-                                  localStorage.getItem(key) || "[]",
+                            onClick={async () => {
+                              try {
+                                await (actor as any).approveWithdrawal(
+                                  BigInt(w.id),
                                 );
-                                const idx = txs.findIndex(
-                                  (t: any) =>
-                                    t.type === "withdrawal" &&
-                                    t.walletAddress === w.walletAddress &&
-                                    t.status === "pending",
+                                toast.success(
+                                  `Withdrawal approved for ${w.username}`,
                                 );
-                                if (idx !== -1) {
-                                  txs[idx].status = "approved";
-                                  const ui = us.findIndex(
-                                    (u2: any) => u2.username === u.username,
-                                  );
-                                  if (ui !== -1) {
-                                    us[ui].balance = Math.max(
-                                      0,
-                                      (us[ui].balance || 0) -
-                                        Number.parseFloat(txs[idx].amount),
-                                    );
-                                    localStorage.setItem(
-                                      "sce_users",
-                                      JSON.stringify(us),
-                                    );
-                                  }
-                                  localStorage.setItem(
-                                    key,
-                                    JSON.stringify(txs),
-                                  );
-                                  toast.success(
-                                    `Withdrawal approved for ${u.username}`,
-                                  );
-                                  window.location.reload();
-                                  break;
-                                }
+                                setWithdrawals((prev) =>
+                                  prev.filter((x) => x.id !== w.id),
+                                );
+                              } catch (e: any) {
+                                toast.error(
+                                  `Approve failed: ${e?.message || e}`,
+                                );
                               }
                             }}
                           >
@@ -2410,31 +2362,21 @@ export function AdminDashboard() {
                             size="sm"
                             variant="ghost"
                             className="text-red-400 border border-red-500/30 hover:bg-red-500/10 h-8 text-xs"
-                            onClick={() => {
-                              const us = getSCEUsers();
-                              for (const u of us) {
-                                const key = `sce_tx_${u.username}`;
-                                const txs = JSON.parse(
-                                  localStorage.getItem(key) || "[]",
+                            onClick={async () => {
+                              try {
+                                await (actor as any).rejectWithdrawal(
+                                  BigInt(w.id),
                                 );
-                                const idx = txs.findIndex(
-                                  (t: any) =>
-                                    t.type === "withdrawal" &&
-                                    t.walletAddress === w.walletAddress &&
-                                    t.status === "pending",
+                                toast.error(
+                                  `Withdrawal rejected for ${w.username}`,
                                 );
-                                if (idx !== -1) {
-                                  txs[idx].status = "rejected";
-                                  localStorage.setItem(
-                                    key,
-                                    JSON.stringify(txs),
-                                  );
-                                  toast.error(
-                                    `Withdrawal rejected for ${u.username}`,
-                                  );
-                                  window.location.reload();
-                                  break;
-                                }
+                                setWithdrawals((prev) =>
+                                  prev.filter((x) => x.id !== w.id),
+                                );
+                              } catch (e: any) {
+                                toast.error(
+                                  `Reject failed: ${e?.message || e}`,
+                                );
                               }
                             }}
                           >
