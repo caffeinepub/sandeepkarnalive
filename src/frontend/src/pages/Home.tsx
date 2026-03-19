@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
+  ArrowLeftRight,
   ArrowRight,
   Award,
   BarChart2,
@@ -111,131 +112,6 @@ const EARN_CATEGORIES = [
     border: "rgba(255,215,0,0.12)",
   },
 ];
-
-type CryptoPrice = {
-  usd: number;
-  usd_24h_change: number;
-};
-
-const COIN_IDS = [
-  { binanceSymbol: "BTCUSDT", symbol: "BTC", color: "#FFD700" },
-  { binanceSymbol: "ETHUSDT", symbol: "ETH", color: "#00F0FF" },
-  { binanceSymbol: "SOLUSDT", symbol: "SOL", color: "#A855F7" },
-  { binanceSymbol: "BNBUSDT", symbol: "BNB", color: "#00FF88" },
-];
-
-function CryptoTicker() {
-  const [prices, setPrices] = useState<Record<string, CryptoPrice>>({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchPrices() {
-      try {
-        const symbols = JSON.stringify(COIN_IDS.map((c) => c.binanceSymbol));
-        const res = await fetch(
-          `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(symbols)}`,
-        );
-        const data = await res.json();
-        const mapped: Record<string, CryptoPrice> = {};
-        if (Array.isArray(data)) {
-          for (const ticker of data) {
-            mapped[ticker.symbol] = {
-              usd: Number.parseFloat(ticker.lastPrice),
-              usd_24h_change: Number.parseFloat(ticker.priceChangePercent),
-            };
-          }
-        }
-        setPrices(mapped);
-        setLoading(false);
-      } catch {
-        setLoading(false);
-      }
-    }
-    fetchPrices();
-    const interval = setInterval(fetchPrices, 15000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return (
-    <div
-      className="flex items-center gap-3 overflow-x-auto scrollbar-hide py-1"
-      data-ocid="home.crypto.section"
-    >
-      {loading
-        ? Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={String(i)}
-              className="flex items-center gap-2 rounded-xl px-4 py-2.5 shrink-0 animate-pulse"
-              style={{
-                background: "rgba(255,215,0,0.06)",
-                border: "1px solid rgba(255,215,0,0.1)",
-              }}
-            >
-              <div
-                className="w-8 h-3 rounded"
-                style={{ background: "rgba(255,215,0,0.15)" }}
-              />
-              <div
-                className="w-16 h-3 rounded"
-                style={{ background: "rgba(255,255,255,0.08)" }}
-              />
-            </div>
-          ))
-        : COIN_IDS.map((coin) => {
-            const price = prices[coin.binanceSymbol];
-            const change = price?.usd_24h_change ?? 0;
-            const isUp = change >= 0;
-            return (
-              <div
-                key={coin.binanceSymbol}
-                className="flex items-center gap-2.5 rounded-xl px-4 py-2.5 shrink-0 transition-all"
-                style={{
-                  background: `${coin.color}08`,
-                  border: `1px solid ${coin.color}25`,
-                }}
-              >
-                <span
-                  className="font-bold text-xs"
-                  style={{ color: coin.color }}
-                >
-                  {coin.symbol}
-                </span>
-                {price ? (
-                  <>
-                    <span className="font-mono text-xs text-white font-medium">
-                      $
-                      {price.usd.toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                    <span
-                      className={`text-xs font-medium flex items-center gap-0.5 ${isUp ? "text-[#00FF88]" : "text-[#FF3366]"}`}
-                    >
-                      {isUp ? (
-                        <TrendingUp className="w-3 h-3" />
-                      ) : (
-                        <TrendingDown className="w-3 h-3" />
-                      )}
-                      {Math.abs(change).toFixed(2)}%
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-xs text-white/30">—</span>
-                )}
-              </div>
-            );
-          })}
-      <div
-        className="flex items-center gap-1 text-[10px] shrink-0 ml-2"
-        style={{ color: "#00FF88" }}
-      >
-        <Activity className="w-3 h-3" />
-        <span className="animate-pulse">LIVE</span>
-      </div>
-    </div>
-  );
-}
 
 function CategorySection({
   cat,
@@ -401,6 +277,209 @@ function CategorySection({
   );
 }
 
+function TradingHub() {
+  const [tradeCount] = useState(() => {
+    try {
+      return Number.parseInt(
+        localStorage.getItem("skce_trade_volume") || "0",
+        10,
+      );
+    } catch {
+      return 0;
+    }
+  });
+
+  const tiers = [
+    { label: "BEGINNER", leverage: "20x", min: 0, max: 10, color: "#FF8C00" },
+    { label: "PRO", leverage: "50x", min: 10, max: 50, color: "#FF3300" },
+    {
+      label: "BEAST MODE 🔥",
+      leverage: "100x",
+      min: 50,
+      max: 999,
+      color: "#FFD700",
+    },
+  ];
+
+  const currentTierIdx = tradeCount >= 50 ? 2 : tradeCount >= 10 ? 1 : 0;
+  const currentTier = tiers[currentTierIdx];
+  const nextTier = tiers[currentTierIdx + 1];
+  const progress = nextTier
+    ? ((tradeCount - currentTier.min) / (nextTier.min - currentTier.min)) * 100
+    : 100;
+  const tradesNeeded = nextTier ? nextTier.min - tradeCount : 0;
+
+  return (
+    <section className="pt-28 pb-0 px-4 relative z-10">
+      <div className="max-w-5xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="rounded-2xl p-5 relative overflow-hidden"
+          style={{
+            background: "rgba(20,5,0,0.95)",
+            border: "1px solid rgba(255,100,0,0.3)",
+            boxShadow:
+              "0 0 40px rgba(255,80,0,0.2), inset 0 0 60px rgba(255,60,0,0.04)",
+          }}
+        >
+          {/* Fire radial glow */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background:
+                "radial-gradient(ellipse at 50% 0%, rgba(255,80,0,0.15) 0%, transparent 65%)",
+            }}
+          />
+
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="flex items-center gap-2">
+              <Zap className="w-5 h-5" style={{ color: "#FF6B00" }} />
+              <span className="font-bold text-white text-base tracking-widest uppercase">
+                ⚡ Leverage Trading
+              </span>
+            </div>
+            <span
+              className="text-xs font-bold px-2 py-0.5 rounded-full animate-pulse"
+              style={{
+                background: "rgba(255,80,0,0.2)",
+                border: "1px solid rgba(255,80,0,0.5)",
+                color: "#FF6B00",
+              }}
+            >
+              LIVE
+            </span>
+          </div>
+
+          {/* Current Leverage + Progress */}
+          <div className="relative z-10 mb-5">
+            <div className="flex items-center gap-3 mb-2">
+              <div
+                className="font-black text-4xl tracking-tight"
+                style={{
+                  color: currentTier.color,
+                  textShadow: `0 0 20px ${currentTier.color}80`,
+                }}
+              >
+                {currentTier.leverage}
+              </div>
+              <div>
+                <div
+                  className="text-xs font-bold"
+                  style={{ color: currentTier.color }}
+                >
+                  {currentTier.label}
+                </div>
+                <div className="text-white/40 text-xs">YOUR LEVERAGE</div>
+              </div>
+              {nextTier && (
+                <div className="flex items-center gap-1 ml-2 text-white/30 text-sm">
+                  <span>→ {nextTier.leverage}</span>
+                  <span>→ {tiers[2].leverage}</span>
+                </div>
+              )}
+            </div>
+
+            {nextTier && (
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-white/50">
+                    {tradeCount} trades done
+                  </span>
+                  <span style={{ color: nextTier.color }}>
+                    {tradesNeeded} more to unlock {nextTier.leverage}
+                  </span>
+                </div>
+                <div
+                  className="h-2 rounded-full overflow-hidden"
+                  style={{ background: "rgba(255,255,255,0.07)" }}
+                >
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(progress, 100)}%` }}
+                    transition={{ duration: 1, ease: "easeOut" }}
+                    className="h-full rounded-full"
+                    style={{
+                      background: `linear-gradient(90deg, #FF6B00, ${currentTier.color})`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3 Tier Steps */}
+          <div className="grid grid-cols-3 gap-3 relative z-10 mb-5">
+            {tiers.map((tier, i) => {
+              const active = i === currentTierIdx;
+              const unlocked = i <= currentTierIdx;
+              return (
+                <div
+                  key={tier.label}
+                  className="rounded-xl p-3 text-center transition-all"
+                  style={{
+                    background: active
+                      ? `${tier.color}18`
+                      : "rgba(255,255,255,0.03)",
+                    border: `1px solid ${active ? `${tier.color}60` : "rgba(255,255,255,0.07)"}`,
+                    boxShadow: active ? `0 0 20px ${tier.color}30` : "none",
+                    opacity: unlocked ? 1 : 0.45,
+                  }}
+                >
+                  <div
+                    className="text-xs font-bold mb-1"
+                    style={{ color: unlocked ? tier.color : "#fff5" }}
+                  >
+                    STEP {i + 1}
+                  </div>
+                  <div
+                    className="font-black text-xl"
+                    style={{ color: active ? tier.color : "#fff7" }}
+                  >
+                    {tier.leverage}
+                  </div>
+                  <div
+                    className="text-xs mt-1"
+                    style={{ color: active ? `${tier.color}cc` : "#fff4" }}
+                  >
+                    {tier.label}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* CTA Button */}
+          <div className="relative z-10">
+            <Link to="/futures">
+              <motion.button
+                type="button"
+                data-ocid="home.trade_now.primary_button"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                className="w-full py-3.5 rounded-xl font-black text-base tracking-wider flex items-center justify-center gap-2"
+                style={{
+                  background: "linear-gradient(135deg, #FF6B00, #FF3300)",
+                  boxShadow:
+                    "0 0 30px rgba(255,80,0,0.4), 0 4px 20px rgba(255,50,0,0.3)",
+                  color: "#fff",
+                  textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+                }}
+              >
+                <Zap className="w-5 h-5" />
+                TRADE NOW — EARN NOW
+                <ArrowRight className="w-5 h-5" />
+              </motion.button>
+            </Link>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
 export function Home() {
   const { user, isLoggedIn } = useAuth();
   const [adminTasks, setAdminTasks] = useState<AdminTask[]>([]);
@@ -454,30 +533,8 @@ export function Home() {
         </div>
       </div>
 
-      {/* Live Crypto Ticker */}
-      <section
-        className="pt-28 pb-4 px-4 relative z-10"
-        data-ocid="home.trading.section"
-      >
-        <div className="max-w-5xl mx-auto">
-          <div
-            className="rounded-2xl p-4"
-            style={{
-              background: "rgba(255,255,255,0.03)",
-              backdropFilter: "blur(20px)",
-              border: "1px solid rgba(255,215,0,0.12)",
-            }}
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <Activity className="w-4 h-4" style={{ color: "#00FF88" }} />
-              <span className="text-sm font-bold text-white">
-                Live Crypto Prices
-              </span>
-            </div>
-            <CryptoTicker />
-          </div>
-        </div>
-      </section>
+      {/* Beast Trading Hub */}
+      <TradingHub />
 
       {/* Ads */}
       {ads.length > 0 && (
@@ -1144,101 +1201,99 @@ export function Home() {
           )}
         </div>
       </section>
-
-      {/* Quick Feature Cards - KYC & Wallet */}
-      <section className="py-6 px-4 relative z-10">
+      {/* Platform Features */}
+      <section className="py-8 px-4 relative z-10">
         <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="rounded-2xl p-5 flex items-center gap-4 cursor-pointer hover:scale-[1.02] transition-transform"
-              style={{
-                background: "rgba(0,255,136,0.05)",
-                border: "1px solid rgba(0,255,136,0.25)",
-                boxShadow: "0 0 20px rgba(0,255,136,0.06)",
-              }}
-            >
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: "rgba(0,255,136,0.12)",
-                  boxShadow: "0 0 15px rgba(0,255,136,0.2)",
-                }}
+          <div className="text-center mb-6">
+            <h2 className="font-display text-2xl font-bold text-white mb-1">
+              All Platform <span className="gold-gradient">Features</span>
+            </h2>
+            <p className="text-white/40 text-sm">
+              Everything you need in one place
+            </p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              {
+                icon: TrendingUp,
+                label: "Futures Trading",
+                desc: "Trade with up to 100x leverage",
+                link: "/futures",
+                color: "#FF6B00",
+              },
+              {
+                icon: BarChart2,
+                label: "Spot Trading",
+                desc: "Buy & sell crypto instantly",
+                link: "/trading",
+                color: "#00F0FF",
+              },
+              {
+                icon: ArrowLeftRight,
+                label: "P2P Exchange",
+                desc: "Trade peer-to-peer with escrow",
+                link: "/p2p",
+                color: "#00FF88",
+              },
+              {
+                icon: Wallet,
+                label: "My Wallet",
+                desc: "Deposit, withdraw, manage funds",
+                link: "/wallet",
+                color: "#FFD700",
+              },
+              {
+                icon: ShieldCheck,
+                label: "KYC Verify",
+                desc: "Verify identity for full access",
+                link: "/kyc",
+                color: "#00FF88",
+              },
+              {
+                icon: Zap,
+                label: "Earn",
+                desc: "500+ earning methods",
+                link: "/earn",
+                color: "#FFD700",
+              },
+            ].map((feat, idx) => (
+              <motion.div
+                key={feat.label}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.07 }}
               >
-                <ShieldCheck className="w-6 h-6" style={{ color: "#00FF88" }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-white text-sm mb-0.5">
-                  KYC Verification
-                </div>
-                <div className="text-xs text-white/40">
-                  Verify your identity to unlock full withdrawal limits and P2P
-                  trading
-                </div>
-              </div>
-              <Link to="/kyc">
-                <button
-                  type="button"
-                  data-ocid="home.kyc.primary_button"
-                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                  style={{
-                    background: "rgba(0,255,136,0.15)",
-                    border: "1px solid rgba(0,255,136,0.3)",
-                    color: "#00FF88",
-                  }}
-                >
-                  Verify
-                </button>
-              </Link>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.1 }}
-              className="rounded-2xl p-5 flex items-center gap-4 cursor-pointer hover:scale-[1.02] transition-transform"
-              style={{
-                background: "rgba(255,215,0,0.05)",
-                border: "1px solid rgba(255,215,0,0.25)",
-                boxShadow: "0 0 20px rgba(255,215,0,0.06)",
-              }}
-            >
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: "rgba(255,215,0,0.12)",
-                  boxShadow: "0 0 15px rgba(255,215,0,0.2)",
-                }}
-              >
-                <Wallet className="w-6 h-6" style={{ color: "#FFD700" }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-white text-sm mb-0.5">
-                  My Wallet
-                </div>
-                <div className="text-xs text-white/40">
-                  Manage your USDT, BTC, ETH, SOL balances. Deposit and withdraw
-                  anytime.
-                </div>
-              </div>
-              <Link to="/wallet">
-                <button
-                  type="button"
-                  data-ocid="home.wallet.primary_button"
-                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                  style={{
-                    background: "rgba(255,215,0,0.15)",
-                    border: "1px solid rgba(255,215,0,0.3)",
-                    color: "#FFD700",
-                  }}
-                >
-                  Open
-                </button>
-              </Link>
-            </motion.div>
+                <Link to={feat.link}>
+                  <div
+                    className="rounded-2xl p-4 h-full cursor-pointer hover:scale-[1.03] transition-transform"
+                    style={{
+                      background: `${feat.color}08`,
+                      border: `1px solid ${feat.color}30`,
+                      boxShadow: `0 0 16px ${feat.color}0a`,
+                    }}
+                    data-ocid={`home.${feat.label.toLowerCase().replace(/\s+/g, "_")}.card`}
+                  >
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+                      style={{
+                        background: `${feat.color}15`,
+                        boxShadow: `0 0 12px ${feat.color}25`,
+                      }}
+                    >
+                      <feat.icon
+                        className="w-5 h-5"
+                        style={{ color: feat.color }}
+                      />
+                    </div>
+                    <div className="font-bold text-white text-sm mb-1">
+                      {feat.label}
+                    </div>
+                    <div className="text-xs text-white/40">{feat.desc}</div>
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
           </div>
         </div>
       </section>

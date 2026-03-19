@@ -30,6 +30,88 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 
+const COUNTRY_PAYMENT_DATA: Record<
+  string,
+  {
+    flag: string;
+    name: string;
+    currency: string;
+    rate: number;
+    payments: string[];
+    banks: string[];
+  }
+> = {
+  IN: {
+    flag: "🇮🇳",
+    name: "India",
+    currency: "INR",
+    rate: 83.5,
+    payments: ["Bank Transfer", "UPI", "PhonePe", "Google Pay", "IMPS"],
+    banks: ["State Bank of India", "HDFC Bank", "ICICI Bank", "Axis Bank"],
+  },
+  NP: {
+    flag: "🇳🇵",
+    name: "Nepal",
+    currency: "NPR",
+    rate: 133.2,
+    payments: ["Bank Transfer", "eSewa", "Khalti", "IME Pay"],
+    banks: ["Nepal Bank", "Everest Bank", "NMB Bank", "Nabil Bank"],
+  },
+  US: {
+    flag: "🇺🇸",
+    name: "USA",
+    currency: "USD",
+    rate: 1,
+    payments: ["Bank Transfer", "Wire Transfer", "ACH", "Zelle"],
+    banks: ["Chase Bank", "Bank of America", "Wells Fargo", "Citibank"],
+  },
+  PK: {
+    flag: "🇵🇰",
+    name: "Pakistan",
+    currency: "PKR",
+    rate: 278.5,
+    payments: ["Bank Transfer", "JazzCash", "EasyPaisa", "HBL Pay"],
+    banks: ["HBL", "UBL", "MCB Bank", "Allied Bank"],
+  },
+  BD: {
+    flag: "🇧🇩",
+    name: "Bangladesh",
+    currency: "BDT",
+    rate: 110.2,
+    payments: ["Bank Transfer", "bKash", "Nagad", "Rocket"],
+    banks: ["Dutch-Bangla Bank", "BRAC Bank", "Islami Bank", "Prime Bank"],
+  },
+  AE: {
+    flag: "🇦🇪",
+    name: "UAE",
+    currency: "AED",
+    rate: 3.67,
+    payments: ["Bank Transfer", "Wire Transfer", "SWIFT"],
+    banks: ["Emirates NBD", "ADCB", "Dubai Islamic Bank", "FAB"],
+  },
+  GB: {
+    flag: "🇬🇧",
+    name: "UK",
+    currency: "GBP",
+    rate: 0.79,
+    payments: ["Bank Transfer", "Faster Payments", "CHAPS", "PayPal"],
+    banks: ["Barclays", "HSBC", "Lloyds", "NatWest"],
+  },
+  CN: {
+    flag: "🇨🇳",
+    name: "China",
+    currency: "CNY",
+    rate: 7.24,
+    payments: ["Bank Transfer", "Alipay", "WeChat Pay", "UnionPay"],
+    banks: [
+      "ICBC",
+      "Bank of China",
+      "China Construction Bank",
+      "Agricultural Bank",
+    ],
+  },
+};
+
 const P2P_ADS = [
   {
     id: 1,
@@ -139,8 +221,11 @@ export function P2P() {
     : null;
   const kycVerified = kycData?.status === "verified";
   const [tab, setTab] = useState<"BUY" | "SELL">("BUY");
-  const [currency, setCurrency] = useState("USD");
+  const [_currency, _setCurrency] = useState("USD");
   const [payMethod, setPayMethod] = useState("all");
+  const [selectedCountry, setSelectedCountry] = useState("IN");
+  const [selectedPaymentChip, setSelectedPaymentChip] = useState("");
+  const [tradeAmount, setTradeAmount] = useState("");
   const [selectedAd, setSelectedAd] = useState<(typeof P2P_ADS)[0] | null>(
     null,
   );
@@ -320,42 +405,167 @@ export function P2P() {
           ))}
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap gap-3 mb-6">
-          <div className="flex items-center gap-2 text-white/40">
-            <Filter className="w-3.5 h-3.5" />
-            <span className="text-xs font-medium uppercase tracking-wider">
-              Filter:
-            </span>
+        {/* Country + Filters */}
+        <div
+          className="rounded-2xl p-4 mb-5"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,215,0,0.15)",
+          }}
+        >
+          <div className="flex flex-wrap gap-3 items-center mb-4">
+            <div className="flex items-center gap-2 text-white/40">
+              <Filter className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium uppercase tracking-wider">
+                Country:
+              </span>
+            </div>
+            <Select
+              value={selectedCountry}
+              onValueChange={(v) => {
+                setSelectedCountry(v);
+                setSelectedPaymentChip("");
+              }}
+            >
+              <SelectTrigger
+                data-ocid="p2p.country.select"
+                className="h-8 w-44 text-xs bg-white/5 border-white/10 text-white"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(COUNTRY_PAYMENT_DATA).map(([code, d]) => (
+                  <SelectItem key={code} value={code}>
+                    {d.flag} {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={payMethod} onValueChange={setPayMethod}>
+              <SelectTrigger
+                data-ocid="p2p.payment.select"
+                className="h-8 w-36 text-xs bg-white/5 border-white/10 text-white"
+              >
+                <SelectValue placeholder="Payment Method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Methods</SelectItem>
+                <SelectItem value="bank">Bank Transfer</SelectItem>
+                <SelectItem value="upi">UPI</SelectItem>
+                <SelectItem value="intl">International</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={currency} onValueChange={setCurrency}>
-            <SelectTrigger
-              data-ocid="p2p.currency.select"
-              className="h-8 w-28 text-xs bg-white/5 border-white/10 text-white"
-            >
-              <SelectValue placeholder="Currency" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="USD">USD</SelectItem>
-              <SelectItem value="INR">INR</SelectItem>
-              <SelectItem value="NPR">NPR</SelectItem>
-              <SelectItem value="EUR">EUR</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={payMethod} onValueChange={setPayMethod}>
-            <SelectTrigger
-              data-ocid="p2p.payment.select"
-              className="h-8 w-36 text-xs bg-white/5 border-white/10 text-white"
-            >
-              <SelectValue placeholder="Payment Method" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Methods</SelectItem>
-              <SelectItem value="bank">Bank Transfer</SelectItem>
-              <SelectItem value="upi">UPI</SelectItem>
-              <SelectItem value="intl">International</SelectItem>
-            </SelectContent>
-          </Select>
+
+          {/* Country info card */}
+          {(() => {
+            const cd = COUNTRY_PAYMENT_DATA[selectedCountry];
+            if (!cd) return null;
+            const amt = Number.parseFloat(tradeAmount) || 100;
+            const localAmt = (amt * cd.rate).toLocaleString("en-US", {
+              maximumFractionDigits: 2,
+            });
+            return (
+              <div className="space-y-3">
+                {/* Rate card */}
+                <div className="flex flex-wrap items-center gap-4">
+                  <div
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                    style={{
+                      background: "rgba(0,255,136,0.08)",
+                      border: "1px solid rgba(0,255,136,0.2)",
+                    }}
+                  >
+                    <span className="text-lg">{cd.flag}</span>
+                    <span
+                      className="text-sm font-bold"
+                      style={{ color: "#00FF88" }}
+                    >
+                      1 USD = {cd.rate} {cd.currency}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      placeholder="Amount (USD)"
+                      value={tradeAmount}
+                      onChange={(e) => setTradeAmount(e.target.value)}
+                      data-ocid="p2p.amount.input"
+                      className="h-8 w-32 text-xs bg-white/5 border-white/10 text-white"
+                    />
+                    <span className="text-xs text-white/50">→</span>
+                    <span
+                      className="text-sm font-bold"
+                      style={{ color: "#FFD700" }}
+                    >
+                      {localAmt} {cd.currency}
+                    </span>
+                  </div>
+                </div>
+                {/* Payment methods */}
+                <div>
+                  <p
+                    className="text-[10px] mb-2 uppercase tracking-wider"
+                    style={{ color: "#6A6E78" }}
+                  >
+                    Payment Methods
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {cd.payments.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() =>
+                          setSelectedPaymentChip(
+                            p === selectedPaymentChip ? "" : p,
+                          )
+                        }
+                        className="px-3 py-1 rounded-full text-xs font-medium transition-all"
+                        style={{
+                          background:
+                            selectedPaymentChip === p
+                              ? "rgba(255,215,0,0.2)"
+                              : "rgba(255,255,255,0.05)",
+                          border:
+                            selectedPaymentChip === p
+                              ? "1px solid rgba(255,215,0,0.5)"
+                              : "1px solid rgba(255,255,255,0.1)",
+                          color:
+                            selectedPaymentChip === p ? "#FFD700" : "#8A8F98",
+                        }}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Banks */}
+                <div>
+                  <p
+                    className="text-[10px] mb-2 uppercase tracking-wider"
+                    style={{ color: "#6A6E78" }}
+                  >
+                    Preferred Banks
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {cd.banks.map((b) => (
+                      <span
+                        key={b}
+                        className="px-2 py-1 rounded text-[10px]"
+                        style={{
+                          background: "rgba(0,240,255,0.07)",
+                          color: "#00F0FF",
+                          border: "1px solid rgba(0,240,255,0.2)",
+                        }}
+                      >
+                        {b}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Ads list */}

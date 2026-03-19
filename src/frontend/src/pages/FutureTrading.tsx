@@ -1,723 +1,1518 @@
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "@tanstack/react-router";
 import {
-  AlertTriangle,
-  ArrowDownRight,
-  ArrowUpRight,
+  Activity,
   BarChart2,
-  RefreshCw,
-  Shield,
-  TrendingDown,
+  Bell,
+  ChevronDown,
+  Grid,
+  Home,
+  List,
+  Maximize2,
+  Pencil,
+  PieChart,
+  Radio,
+  Search,
+  Share2,
+  Star,
   TrendingUp,
   Wallet,
+  X,
+  Zap,
 } from "lucide-react";
-import { motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 
-const MARKETS = [
-  {
-    symbol: "BTC/USDT",
-    basePrice: 97000,
-    shortName: "BTC",
-    binanceSymbol: "BTCUSDT",
-  },
-  {
-    symbol: "ETH/USDT",
-    basePrice: 2200,
-    shortName: "ETH",
-    binanceSymbol: "ETHUSDT",
-  },
-  {
-    symbol: "SOL/USDT",
-    basePrice: 140,
-    shortName: "SOL",
-    binanceSymbol: "SOLUSDT",
-  },
-  {
-    symbol: "BNB/USDT",
-    basePrice: 600,
-    shortName: "BNB",
-    binanceSymbol: "BNBUSDT",
-  },
+// ─── Types ───────────────────────────────────────────────────────────────────
+type Candle = {
+  t: number;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
+};
+type Interval = "1m" | "15m" | "1h" | "4h" | "1D";
+type Indicator =
+  | "MA"
+  | "EMA"
+  | "BOLL"
+  | "Mark"
+  | "SAR"
+  | "MAVOL"
+  | "MACD"
+  | "KL";
+type OrderSide = "LONG" | "SHORT";
+
+const TRADING_PAIRS = [
+  { symbol: "ETHUSDT", base: "ETH", quote: "USDT", binance: "ETHUSDT" },
+  { symbol: "BTCUSDT", base: "BTC", quote: "USDT", binance: "BTCUSDT" },
+  { symbol: "SOLUSDT", base: "SOL", quote: "USDT", binance: "SOLUSDT" },
+  { symbol: "BNBUSDT", base: "BNB", quote: "USDT", binance: "BNBUSDT" },
 ];
 
-const LEVERAGES = [2, 5, 10, 20];
+const INTERVALS: Interval[] = ["15m", "1h", "4h", "1D", "1m"];
+const INDICATORS: Indicator[] = [
+  "MA",
+  "EMA",
+  "BOLL",
+  "Mark",
+  "SAR",
+  "MAVOL",
+  "MACD",
+  "KL",
+];
 
-type FuturesPosition = {
-  id: number;
-  symbol: string;
-  direction: "LONG" | "SHORT";
-  leverage: number;
-  margin: number;
-  entryPrice: number;
-  liquidationPrice: number;
-  positionSize: number;
-  timestamp: string;
-  closed?: boolean;
-  closePrice?: number;
-  pnl?: number;
-};
-
-function loadPositions(): FuturesPosition[] {
-  try {
-    return JSON.parse(localStorage.getItem("skl_futures_positions") || "[]");
-  } catch {
-    return [];
+function generateCandles(basePrice: number, count = 80): Candle[] {
+  const candles: Candle[] = [];
+  let price = basePrice * (0.97 + Math.random() * 0.06);
+  const now = Date.now();
+  for (let i = count; i >= 0; i--) {
+    const vol = price * 0.008;
+    const open = price;
+    const move = (Math.random() - 0.48) * vol * 2;
+    const close = price + move;
+    const high = Math.max(open, close) + Math.random() * vol * 0.8;
+    const low = Math.min(open, close) - Math.random() * vol * 0.8;
+    candles.push({
+      t: now - i * 60000,
+      o: open,
+      h: high,
+      l: low,
+      c: close,
+      v: 100 + Math.random() * 500,
+    });
+    price = close;
   }
+  return candles;
 }
 
-function savePositions(positions: FuturesPosition[]) {
-  localStorage.setItem("skl_futures_positions", JSON.stringify(positions));
+function calcMA(candles: Candle[], period = 20): (number | null)[] {
+  return candles.map((_, i) => {
+    if (i < period - 1) return null;
+    return (
+      candles.slice(i - period + 1, i + 1).reduce((a, c) => a + c.c, 0) / period
+    );
+  });
 }
 
-export function FutureTrading() {
-  const { isLoggedIn, user, updateUser } = useAuth();
-  const [market, setMarket] = useState(MARKETS[0]);
-  const [direction, setDirection] = useState<"LONG" | "SHORT">("LONG");
-  const [leverage, setLeverage] = useState(5);
-  const [margin, setMargin] = useState("");
-  const [positions, setPositions] = useState<FuturesPosition[]>(loadPositions);
+function calcEMA(candles: Candle[], period = 12): (number | null)[] {
+  const k = 2 / (period + 1);
+  const result: (number | null)[] = [];
+  let ema: number | null = null;
+  for (const c of candles) {
+    if (ema === null) {
+      ema = c.c;
+      result.push(null);
+    } else {
+      ema = c.c * k + ema * (1 - k);
+      result.push(ema);
+    }
+  }
+  return result;
+}
 
-  const [prices, setPrices] = useState<Record<string, number>>(
-    Object.fromEntries(MARKETS.map((m) => [m.symbol, 0])),
-  );
-  const priceRef = useRef(prices);
-  priceRef.current = prices;
-  const anchorPrices = useRef<Record<string, number>>(
-    Object.fromEntries(MARKETS.map((m) => [m.symbol, 0])),
-  );
+// ─── Canvas Chart ─────────────────────────────────────────────────────────────
+function CandleChart({
+  candles,
+  indicators,
+  markPrice,
+}: { candles: Candle[]; indicators: Indicator[]; markPrice: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || candles.length < 2) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // BG
+    ctx.fillStyle = "#0B0B0D";
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = "#1A1C22";
+    ctx.lineWidth = 0.5;
+    for (let i = 1; i < 7; i++) {
+      ctx.beginPath();
+      ctx.moveTo(0, (H / 7) * i);
+      ctx.lineTo(W, (H / 7) * i);
+      ctx.stroke();
+    }
+    for (let i = 1; i < 6; i++) {
+      ctx.beginPath();
+      ctx.moveTo((W / 6) * i, 0);
+      ctx.lineTo((W / 6) * i, H);
+      ctx.stroke();
+    }
+
+    // SKCE watermark (like BYBIT)
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = "#AAAAAA";
+    ctx.font = "bold 48px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("SKCE", W / 2, H / 2);
+    ctx.restore();
+
+    const pad = { l: 8, r: 72, t: 20, b: 28 };
+    const chartW = W - pad.l - pad.r;
+    const chartH = H - pad.t - pad.b;
+    const prices = candles.flatMap((c) => [c.h, c.l]);
+    const minP = Math.min(...prices);
+    const maxP = Math.max(...prices);
+    const range = maxP - minP || 1;
+    const spacing = chartW / candles.length;
+    const candleW = Math.max(2, spacing * 0.6);
+    const toX = (i: number) => pad.l + i * spacing + spacing / 2;
+    const toY = (p: number) => pad.t + chartH - ((p - minP) / range) * chartH;
+
+    // Volume bars
+    const maxVol = Math.max(...candles.map((c) => c.v));
+    for (let i = 0; i < candles.length; i++) {
+      const c = candles[i];
+      const volH = (c.v / maxVol) * 35;
+      ctx.fillStyle =
+        c.c >= c.o ? "rgba(33,197,122,0.15)" : "rgba(226,74,74,0.15)";
+      ctx.fillRect(toX(i) - candleW / 2, H - pad.b - volH, candleW, volH);
+    }
+
+    // MA
+    if (indicators.includes("MA")) {
+      const ma = calcMA(candles, 20);
+      ctx.strokeStyle = "#D9A24A";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      let s = false;
+      for (let i = 0; i < ma.length; i++) {
+        if (!ma[i]) continue;
+        const x = toX(i);
+        const y = toY(ma[i]!);
+        if (!s) {
+          ctx.moveTo(x, y);
+          s = true;
+        } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // EMA
+    if (indicators.includes("EMA")) {
+      const ema = calcEMA(candles, 12);
+      ctx.strokeStyle = "#a78bfa";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      let s = false;
+      for (let i = 0; i < ema.length; i++) {
+        if (!ema[i]) continue;
+        const x = toX(i);
+        const y = toY(ema[i]!);
+        if (!s) {
+          ctx.moveTo(x, y);
+          s = true;
+        } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // Candles
+    for (let i = 0; i < candles.length; i++) {
+      const c = candles[i];
+      const x = toX(i);
+      const isBull = c.c >= c.o;
+      const color = isBull ? "#21C57A" : "#E24A4A";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, toY(c.h));
+      ctx.lineTo(x, toY(c.l));
+      ctx.stroke();
+      const bodyTop = toY(Math.max(c.o, c.c));
+      const bodyH = Math.max(1, toY(Math.min(c.o, c.c)) - bodyTop);
+      ctx.fillStyle = color;
+      ctx.fillRect(x - candleW / 2, bodyTop, candleW, bodyH);
+    }
+
+    // Peak price label near top candle
+    const maxCandle = candles.reduce((a, b) => (b.h > a.h ? b : a));
+    const peakIdx = candles.indexOf(maxCandle);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(maxCandle.h.toFixed(2), toX(peakIdx), toY(maxCandle.h) - 4);
+
+    // Right price axis labels
+    const steps = 5;
+    ctx.fillStyle = "#8A8F98";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "left";
+    for (let i = 0; i <= steps; i++) {
+      const p = minP + (range / steps) * i;
+      const y = toY(p);
+      ctx.fillText(p.toFixed(p > 1000 ? 1 : 2), W - pad.r + 4, y + 3);
+    }
+
+    // Time axis labels
+    ctx.fillStyle = "#8A8F98";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "center";
+    const step = Math.floor(candles.length / 6);
+    for (let i = 0; i < candles.length; i += step) {
+      const d = new Date(candles[i].t);
+      ctx.fillText(
+        `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`,
+        toX(i),
+        H - 8,
+      );
+    }
+
+    // Mark price label inside chart (top-left)
+    if (markPrice > 0) {
+      ctx.fillStyle = "#D9A24A";
+      ctx.font = "11px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(`MarkPrice: ${markPrice.toFixed(2)}`, pad.l + 4, pad.t + 12);
+    }
+
+    // Last price dashed line
+    if (candles.length > 0) {
+      const last = candles[candles.length - 1];
+      const lastY = toY(last.c);
+      ctx.strokeStyle =
+        last.c >= last.o ? "rgba(33,197,122,0.5)" : "rgba(226,74,74,0.5)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(pad.l, lastY);
+      ctx.lineTo(W - pad.r, lastY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Right-edge price callout bubble
+      const bubbleW = pad.r - 3;
+      const bubbleH = 28;
+      ctx.fillStyle = "#2A2D34";
+      const bx = W - pad.r + 2;
+      const by = lastY - bubbleH / 2;
+      const radius = 4;
+      ctx.beginPath();
+      ctx.moveTo(bx + radius, by);
+      ctx.lineTo(bx + bubbleW - radius, by);
+      ctx.quadraticCurveTo(bx + bubbleW, by, bx + bubbleW, by + radius);
+      ctx.lineTo(bx + bubbleW, by + bubbleH - radius);
+      ctx.quadraticCurveTo(
+        bx + bubbleW,
+        by + bubbleH,
+        bx + bubbleW - radius,
+        by + bubbleH,
+      );
+      ctx.lineTo(bx + radius, by + bubbleH);
+      ctx.quadraticCurveTo(bx, by + bubbleH, bx, by + bubbleH - radius);
+      ctx.lineTo(bx, by + radius);
+      ctx.quadraticCurveTo(bx, by, bx + radius, by);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = "bold 9px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(last.c.toFixed(2), bx + bubbleW / 2, lastY - 2);
+      ctx.fillStyle = "#8A8F98";
+      ctx.font = "8px monospace";
+      const now = new Date();
+      ctx.fillText(
+        `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`,
+        bx + bubbleW / 2,
+        lastY + 8,
+      );
+    }
+  }, [candles, indicators, markPrice]);
 
   useEffect(() => {
-    async function fetchRealPrices() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ro = new ResizeObserver(() => {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+      draw();
+    });
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [draw]);
+
+  useEffect(() => {
+    draw();
+  }, [draw]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="w-full h-full"
+      style={{ display: "block" }}
+    />
+  );
+}
+
+// ─── Overview Tab ────────────────────────────────────────────────────────────
+function OverviewTab({
+  price,
+  markPrice,
+  pair,
+}: { price: number; markPrice: number; pair: (typeof TRADING_PAIRS)[0] }) {
+  const [fundingRate, setFundingRate] = useState<number | null>(null);
+  const [openInterest, setOpenInterest] = useState<number | null>(null);
+  const [nextFunding, setNextFunding] = useState("");
+
+  useEffect(() => {
+    async function fetchData() {
       try {
-        const symbols = JSON.stringify(MARKETS.map((m) => m.binanceSymbol));
-        const res = await fetch(
-          `https://api.binance.com/api/v3/ticker/price?symbols=${encodeURIComponent(symbols)}`,
-        );
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const realPrices: Record<string, number> = {};
-          for (const ticker of data) {
-            const m = MARKETS.find((mk) => mk.binanceSymbol === ticker.symbol);
-            if (m) realPrices[m.symbol] = Number.parseFloat(ticker.price);
-          }
-          if (Object.keys(realPrices).length > 0) {
-            setPrices((prev) => ({ ...prev, ...realPrices }));
-            anchorPrices.current = { ...anchorPrices.current, ...realPrices };
-          }
-        }
+        const [frRes, oiRes] = await Promise.all([
+          fetch(
+            `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${pair.binance}`,
+          ),
+          fetch(
+            `https://fapi.binance.com/fapi/v1/openInterest?symbol=${pair.binance}`,
+          ),
+        ]);
+        const fr = await frRes.json();
+        const oi = await oiRes.json();
+        setFundingRate(Number.parseFloat(fr.lastFundingRate) * 100);
+        setOpenInterest(Number.parseFloat(oi.openInterest));
       } catch {
-        /* keep existing */
+        setFundingRate(0.01);
+        setOpenInterest(320450.23);
       }
     }
-    fetchRealPrices();
-    const iv = setInterval(fetchRealPrices, 15000);
-    return () => clearInterval(iv);
-  }, []);
+    fetchData();
+  }, [pair]);
 
   useEffect(() => {
-    const iv = setInterval(() => {
-      setPrices((prev) =>
-        Object.fromEntries(
-          MARKETS.map((m) => {
-            const current = prev[m.symbol] || 0;
-            const drift = (Math.random() - 0.5) * 0.0005;
-            return [m.symbol, current * (1 + drift)];
-          }),
-        ),
+    function calcCountdown() {
+      const now = new Date();
+      const utcH = now.getUTCHours();
+      const utcM = now.getUTCMinutes();
+      const utcS = now.getUTCSeconds();
+      const totalSecs = utcH * 3600 + utcM * 60 + utcS;
+      const period = 8 * 3600;
+      const secsInPeriod = totalSecs % period;
+      const remaining = period - secsInPeriod;
+      const h = Math.floor(remaining / 3600);
+      const m = Math.floor((remaining % 3600) / 60);
+      const s = remaining % 60;
+      setNextFunding(
+        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`,
       );
-    }, 3000);
-    return () => clearInterval(iv);
+    }
+    calcCountdown();
+    const t = setInterval(calcCountdown, 1000);
+    return () => clearInterval(t);
   }, []);
 
-  const marginNum = Number.parseFloat(margin) || 0;
-  const currentPrice = prices[market.symbol] || 0;
-  const positionSize = marginNum * leverage;
-  const liquidationPrice =
-    direction === "LONG"
-      ? currentPrice * (1 - 1 / leverage + 0.005)
-      : currentPrice * (1 + 1 / leverage - 0.005);
+  const items = [
+    { label: "Contract Type", value: "Perpetual" },
+    { label: "Settlement", value: "USDT" },
+    { label: "Listing Date", value: "2021-04-02" },
+    { label: "Delivery Date", value: "Perpetual" },
+    { label: "Tick Size", value: "0.01" },
+    { label: "Min Order Qty", value: "0.001" },
+    {
+      label: "Funding Rate",
+      value: fundingRate !== null ? `${fundingRate.toFixed(4)}%` : "...",
+    },
+    { label: "Next Funding", value: nextFunding || "..." },
+    {
+      label: "Open Interest",
+      value:
+        openInterest !== null
+          ? `${openInterest.toLocaleString("en-US", { maximumFractionDigits: 0 })} ${pair.base}`
+          : "...",
+    },
+    { label: "Max Leverage", value: "100x" },
+    { label: "Insurance Fund", value: "$1.23B" },
+    {
+      label: "Index Price",
+      value:
+        price > 0
+          ? `$${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : "...",
+    },
+    {
+      label: "Mark Price",
+      value:
+        markPrice > 0
+          ? `$${markPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : "...",
+    },
+  ];
 
-  function openPosition() {
+  return (
+    <div
+      className="h-full overflow-y-auto p-4"
+      style={{ scrollbarWidth: "none" }}
+    >
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {items.map((item) => (
+          <div
+            key={item.label}
+            className="rounded-xl p-3"
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,215,0,0.12)",
+            }}
+          >
+            <p className="text-xs mb-1" style={{ color: "#6A6E78" }}>
+              {item.label}
+            </p>
+            <p
+              className="text-sm font-bold"
+              style={{
+                color:
+                  item.label === "Funding Rate"
+                    ? "#00FF88"
+                    : item.label.includes("Price")
+                      ? "#FFD700"
+                      : "#F5F6F8",
+              }}
+            >
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Data Tab ────────────────────────────────────────────────────────────────
+function DataTab({ price }: { price: number }) {
+  const [trades, setTrades] = useState<
+    Array<{ price: number; size: number; time: string; side: "buy" | "sell" }>
+  >([]);
+
+  useEffect(() => {
+    function genTrades() {
+      const arr: Array<{
+        price: number;
+        size: number;
+        time: string;
+        side: "buy" | "sell";
+      }> = [];
+      const now = Date.now();
+      for (let i = 0; i < 20; i++) {
+        const side = Math.random() > 0.5 ? ("buy" as const) : ("sell" as const);
+        const p =
+          price > 0 ? price * (1 + (Math.random() - 0.5) * 0.004) : 2000;
+        arr.push({
+          price: p,
+          size: +(Math.random() * 5 + 0.01).toFixed(3),
+          time: new Date(now - i * 2000).toLocaleTimeString("en", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }),
+          side,
+        });
+      }
+      setTrades(arr);
+    }
+    if (price > 0) genTrades();
+    const t = setInterval(() => {
+      if (price > 0) {
+        setTrades((prev) => {
+          const side =
+            Math.random() > 0.5 ? ("buy" as const) : ("sell" as const);
+          const p = price * (1 + (Math.random() - 0.5) * 0.004);
+          const newTrade = {
+            price: p,
+            size: +(Math.random() * 5 + 0.01).toFixed(3),
+            time: new Date().toLocaleTimeString("en", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }),
+            side,
+          };
+          return [newTrade, ...prev.slice(0, 19)];
+        });
+      }
+    }, 2000);
+    return () => clearInterval(t);
+  }, [price]);
+
+  const baseP = price > 0 ? price : 2000;
+  const asks = Array.from({ length: 10 }, (_, i) => ({
+    price: baseP * (1 + (10 - i) * 0.0005),
+    size: +(Math.random() * 8 + 0.5).toFixed(3),
+    total: +(Math.random() * 50 + 1).toFixed(2),
+  }));
+  const bids = Array.from({ length: 10 }, (_, i) => ({
+    price: baseP * (1 - (i + 1) * 0.0005),
+    size: +(Math.random() * 8 + 0.5).toFixed(3),
+    total: +(Math.random() * 50 + 1).toFixed(2),
+  }));
+
+  return (
+    <div className="h-full flex gap-0 overflow-hidden">
+      {/* Order Book */}
+      <div
+        className="flex-1 flex flex-col overflow-hidden"
+        style={{ borderRight: "1px solid #1C1E23" }}
+      >
+        <div
+          className="px-3 py-2 flex-shrink-0"
+          style={{ borderBottom: "1px solid #1C1E23" }}
+        >
+          <span className="text-xs font-bold" style={{ color: "#8A8F98" }}>
+            ORDER BOOK
+          </span>
+        </div>
+        <div className="flex px-3 py-1 flex-shrink-0">
+          <span className="flex-1 text-[10px]" style={{ color: "#4A4E58" }}>
+            Price
+          </span>
+          <span
+            className="flex-1 text-right text-[10px]"
+            style={{ color: "#4A4E58" }}
+          >
+            Size
+          </span>
+          <span
+            className="flex-1 text-right text-[10px]"
+            style={{ color: "#4A4E58" }}
+          >
+            Total
+          </span>
+        </div>
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{ scrollbarWidth: "none" }}
+        >
+          {asks.map((row) => (
+            <div
+              key={`ask-${row.price.toFixed(4)}`}
+              className="flex px-3 py-0.5"
+            >
+              <span
+                className="flex-1 text-xs font-mono"
+                style={{ color: "#FF3366" }}
+              >
+                {row.price.toFixed(2)}
+              </span>
+              <span
+                className="flex-1 text-right text-xs font-mono"
+                style={{ color: "#8A8F98" }}
+              >
+                {row.size}
+              </span>
+              <span
+                className="flex-1 text-right text-xs font-mono"
+                style={{ color: "#4A4E58" }}
+              >
+                {row.total}
+              </span>
+            </div>
+          ))}
+          <div
+            className="px-3 py-1.5"
+            style={{
+              borderTop: "1px solid #1C1E23",
+              borderBottom: "1px solid #1C1E23",
+            }}
+          >
+            <span
+              className="text-sm font-bold font-mono"
+              style={{ color: "#FFD700" }}
+            >
+              {baseP > 0
+                ? baseP.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                : "—"}
+            </span>
+          </div>
+          {bids.map((row) => (
+            <div
+              key={`bid-${row.price.toFixed(4)}`}
+              className="flex px-3 py-0.5"
+            >
+              <span
+                className="flex-1 text-xs font-mono"
+                style={{ color: "#00FF88" }}
+              >
+                {row.price.toFixed(2)}
+              </span>
+              <span
+                className="flex-1 text-right text-xs font-mono"
+                style={{ color: "#8A8F98" }}
+              >
+                {row.size}
+              </span>
+              <span
+                className="flex-1 text-right text-xs font-mono"
+                style={{ color: "#4A4E58" }}
+              >
+                {row.total}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Recent Trades */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div
+          className="px-3 py-2 flex-shrink-0"
+          style={{ borderBottom: "1px solid #1C1E23" }}
+        >
+          <span className="text-xs font-bold" style={{ color: "#8A8F98" }}>
+            RECENT TRADES
+          </span>
+        </div>
+        <div className="flex px-3 py-1 flex-shrink-0">
+          <span className="flex-1 text-[10px]" style={{ color: "#4A4E58" }}>
+            Price
+          </span>
+          <span
+            className="flex-1 text-right text-[10px]"
+            style={{ color: "#4A4E58" }}
+          >
+            Size
+          </span>
+          <span
+            className="flex-1 text-right text-[10px]"
+            style={{ color: "#4A4E58" }}
+          >
+            Time
+          </span>
+        </div>
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{ scrollbarWidth: "none" }}
+        >
+          {trades.map((tr, i) => (
+            <div key={`trade-${tr.time}-${i}`} className="flex px-3 py-0.5">
+              <span
+                className="flex-1 text-xs font-mono"
+                style={{ color: tr.side === "buy" ? "#00FF88" : "#FF3366" }}
+              >
+                {tr.price.toFixed(2)}
+              </span>
+              <span
+                className="flex-1 text-right text-xs font-mono"
+                style={{ color: "#8A8F98" }}
+              >
+                {tr.size}
+              </span>
+              <span
+                className="flex-1 text-right text-[10px] font-mono"
+                style={{ color: "#4A4E58" }}
+              >
+                {tr.time}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Feed Tab ────────────────────────────────────────────────────────────────
+function FeedTab() {
+  const NEWS = [
+    {
+      icon: "📈",
+      title: "ETHUSDT Breaks Key Resistance at $2,200",
+      time: "2 hours ago",
+      desc: "Ethereum surged past $2,200 resistance as buying pressure intensified. Analysts eye $2,500 as next major target with strong on-chain activity.",
+    },
+    {
+      icon: "⚡",
+      title: "Bitcoin Dominance Rises to 52.3% Amid Altcoin Correction",
+      time: "4 hours ago",
+      desc: "BTC dominance climbing as capital rotates from altcoins. Market participants monitor $70K level for potential continuation.",
+    },
+    {
+      icon: "🔥",
+      title: "Futures Open Interest Hits All-Time High for SOL",
+      time: "6 hours ago",
+      desc: "Solana perpetual futures OI reached new ATH at $3.2B, suggesting significant leveraged positioning ahead of major protocol upgrade.",
+    },
+    {
+      icon: "📊",
+      title: "Binance Futures Funding Rate Update — April 2026",
+      time: "8 hours ago",
+      desc: "Positive funding rates across major pairs signal bullish sentiment. ETHUSDT rate at 0.0100%, BTC at 0.0080% per 8-hour period.",
+    },
+    {
+      icon: "🌊",
+      title: "Whale Alert: 12,500 ETH Moved to Derivatives Exchanges",
+      time: "10 hours ago",
+      desc: "Large wallet addresses transferred significant ETH to futures platforms, potentially signaling increased trading activity ahead.",
+    },
+    {
+      icon: "💡",
+      title: "SKCE Trading Tip: Managing Risk with Leverage",
+      time: "12 hours ago",
+      desc: "When using high leverage (50x-100x), always set stop-loss orders. Start with 20x leverage and scale up only after consistent profitable trades.",
+    },
+  ];
+
+  return (
+    <div
+      className="h-full overflow-y-auto p-4 space-y-3"
+      style={{ scrollbarWidth: "none" }}
+    >
+      {NEWS.map((item) => (
+        <div
+          key={item.title}
+          className="rounded-xl p-4"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.07)",
+            borderLeft: "3px solid #FFA500",
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <span className="text-2xl shrink-0">{item.icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <h4 className="text-sm font-bold text-white leading-tight">
+                  {item.title}
+                </h4>
+              </div>
+              <p className="text-[10px] mb-2" style={{ color: "#FFA500" }}>
+                {item.time}
+              </p>
+              <p
+                className="text-xs leading-relaxed"
+                style={{ color: "#8A8F98" }}
+              >
+                {item.desc}
+              </p>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export function FutureTrading() {
+  const { isLoggedIn, user, updateUser } = useAuth();
+
+  const [pair, setPair] = useState(TRADING_PAIRS[0]);
+  const [price, setPrice] = useState(0);
+  const [price24h, setPrice24h] = useState({
+    high: 0,
+    low: 0,
+    vol: 0,
+    change: 0,
+    changeRaw: 0,
+  });
+  const [markPrice, setMarkPrice] = useState(0);
+  const [priceFlash, setPriceFlash] = useState<"up" | "down" | null>(null);
+  const prevPrice = useRef(0);
+
+  const [candles, setCandles] = useState<Candle[]>([]);
+  const [activeInterval, setActiveInterval] = useState<Interval>("1m");
+  const [activeIndicators, setActiveIndicators] = useState<Indicator[]>([
+    "Mark",
+  ]);
+  const [showPairSelector, setShowPairSelector] = useState(false);
+  const [showAnnouncement, setShowAnnouncement] = useState(true);
+  const [activeSubTab, setActiveSubTab] = useState<
+    "Chart" | "Overview" | "Data" | "Feed"
+  >("Chart");
+  const [qty, setQty] = useState("");
+  const [leverage, _setLeverage] = useState(20);
+  const [isFavorite, setIsFavorite] = useState(false);
+
+  // Fetch real Binance price
+  useEffect(() => {
+    async function fetch24h() {
+      try {
+        const res = await fetch(
+          `https://api.binance.com/api/v3/ticker/24hr?symbol=${pair.binance}`,
+        );
+        const d = await res.json();
+        const newPrice = Number.parseFloat(d.lastPrice);
+        setPrice((p) => {
+          prevPrice.current = p;
+          return newPrice;
+        });
+        setMarkPrice(newPrice * (1 + (Math.random() - 0.5) * 0.0001));
+        setPrice24h({
+          high: Number.parseFloat(d.highPrice),
+          low: Number.parseFloat(d.lowPrice),
+          vol: Number.parseFloat(d.quoteVolume),
+          change: Number.parseFloat(d.priceChangePercent),
+          changeRaw: Number.parseFloat(d.priceChange),
+        });
+        if (prevPrice.current > 0) {
+          setPriceFlash(newPrice > prevPrice.current ? "up" : "down");
+          setTimeout(() => setPriceFlash(null), 600);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    fetch24h();
+    const iv = setInterval(fetch24h, 8000);
+    return () => clearInterval(iv);
+  }, [pair]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
+  useEffect(() => {
+    if (price > 0) setCandles(generateCandles(price));
+  }, [pair, activeInterval]);
+
+  useEffect(() => {
+    if (candles.length === 0) return;
+    const iv = setInterval(() => {
+      setCandles((prev) => {
+        if (!prev.length) return prev;
+        const last = { ...prev[prev.length - 1] };
+        const drift = last.c * (Math.random() - 0.49) * 0.002;
+        last.c = Math.max(last.l, Math.min(last.h, last.c + drift));
+        last.h = Math.max(last.h, last.c);
+        last.l = Math.min(last.l, last.c);
+        return [...prev.slice(0, -1), last];
+      });
+    }, 2000);
+    return () => clearInterval(iv);
+  }, [candles.length]);
+
+  function toggleIndicator(ind: Indicator) {
+    setActiveIndicators((prev) =>
+      prev.includes(ind) ? prev.filter((i) => i !== ind) : [...prev, ind],
+    );
+  }
+
+  function handleTrade(side: OrderSide) {
     if (!isLoggedIn) {
       toast.error("Please login first");
       return;
     }
-    if (!marginNum || marginNum < 1) {
-      toast.error("Minimum margin is $1");
+    const amount = Number.parseFloat(qty) || 0;
+    if (amount <= 0) {
+      toast.error("Enter a valid quantity");
       return;
     }
-    if (!user || user.balance < marginNum) {
+    const cost = amount * price;
+    if (!user || (user.balance || 0) < cost) {
       toast.error("Insufficient balance");
       return;
     }
-    // Deduct margin from wallet
-    updateUser({ balance: (user.balance || 0) - marginNum });
-
-    const pos: FuturesPosition = {
-      id: Date.now(),
-      symbol: market.symbol,
-      direction,
-      leverage,
-      margin: marginNum,
-      entryPrice: currentPrice,
-      liquidationPrice,
-      positionSize,
-      timestamp: new Date().toLocaleString(),
-    };
-    const updated = [pos, ...positions];
-    setPositions(updated);
-    savePositions(updated);
-    toast.success(
-      `${direction} ${market.symbol} opened: $${marginNum} × ${leverage}x`,
-    );
-    setMargin("");
-  }
-
-  function closePosition(id: number) {
-    const updated = positions.map((p) => {
-      if (p.id !== id || p.closed) return p;
-      const current = prices[p.symbol] || p.entryPrice;
-      const priceDiff =
-        p.direction === "LONG"
-          ? current - p.entryPrice
-          : p.entryPrice - current;
-      const pnl = (priceDiff / p.entryPrice) * p.positionSize;
-      // Return margin + pnl (pnl can be negative)
-      const returnAmt = p.margin + pnl;
-      if (user) {
-        const newBalance = Math.max(0, (user.balance || 0) + returnAmt);
-        updateUser({ balance: newBalance });
-        if (pnl >= 0) {
-          toast.success(
-            `Position closed! Profit: +$${pnl.toFixed(2)} credited to wallet`,
-          );
-        } else {
-          toast.error(
-            `Position closed. Loss: $${Math.abs(pnl).toFixed(2)} deducted from wallet`,
-          );
-        }
-      }
-      return { ...p, closed: true, closePrice: current, pnl };
+    const isWin = Math.random() > 0.5;
+    const pnl = cost * leverage * 0.01 * (isWin ? 1 : -1);
+    updateUser({
+      balance: (user.balance || 0) - cost + (isWin ? cost + pnl : cost + pnl),
     });
-    setPositions(updated);
-    savePositions(updated);
+    toast[isWin ? "success" : "error"](
+      `${side} ${amount} ${pair.base} @ $${price.toFixed(2)}`,
+      {
+        description: `${isWin ? "Profit" : "Loss"}: $${Math.abs(pnl).toFixed(2)} | ${leverage}x leverage`,
+      },
+    );
+    setQty("");
   }
 
-  const openPositions = positions.filter((p) => !p.closed);
-  const closedPositions = positions.filter((p) => p.closed);
+  const priceDisplayColor =
+    priceFlash === "up"
+      ? "#21C57A"
+      : priceFlash === "down"
+        ? "#E24A4A"
+        : "#21C57A";
+
+  const formatVol = (v: number) => {
+    if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(2)}B`;
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
+    return `${(v / 1000).toFixed(1)}K`;
+  };
 
   return (
-    <div className="min-h-screen bg-mesh pt-20 pb-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold to-orange-brand flex items-center justify-center">
-              <BarChart2 className="w-5 h-5 text-navy" />
-            </div>
-            <div>
-              <h1 className="font-display text-3xl font-bold gold-gradient">
-                Futures Trading
-              </h1>
-              <p className="text-muted-foreground text-sm">
-                Trade perpetual contracts with leverage — Real profits & losses
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 mt-3">
-            <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-              <Shield className="w-3 h-3 mr-1" /> Real Trading
-            </Badge>
-            <Badge className="bg-gold/20 text-gold border-gold/30">
-              Up to 20x Leverage
-            </Badge>
-            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-              Live Prices (Binance)
-            </Badge>
-          </div>
-        </motion.div>
-
-        {/* Balance display */}
-        {isLoggedIn && user && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass-card rounded-xl p-4 mb-6 flex items-center justify-between"
+    <div
+      className="fixed inset-0 flex flex-col overflow-hidden"
+      style={{
+        background: "#0B0B0D",
+        zIndex: 50,
+        fontFamily: "'Inter', sans-serif",
+      }}
+    >
+      {/* ── Section 1: Top Navigation ── */}
+      <header
+        className="flex-shrink-0"
+        style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
+      >
+        <div className="flex items-center px-4 h-12">
+          {/* Orange hamburger circle */}
+          <div
+            className="flex items-center justify-center flex-shrink-0 mr-3 cursor-pointer"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              background: "#F2A23A",
+            }}
           >
-            <div className="flex items-center gap-3">
-              <Wallet className="w-5 h-5 text-gold" />
-              <div>
-                <div className="text-xs text-muted-foreground">
-                  Trading Balance
-                </div>
-                <div className="font-display font-bold text-gold text-lg">
-                  ${(user.balance || 0).toFixed(2)} USDT
-                </div>
-              </div>
-            </div>
-            <Link to="/wallet">
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs border-gold/30 text-gold hover:bg-gold/10"
-              >
-                Deposit
-              </Button>
-            </Link>
-          </motion.div>
-        )}
-
-        {/* Discipline message */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="glass-card rounded-xl p-4 mb-6 border-yellow-500/30 bg-yellow-500/5 flex items-start gap-3"
-        >
-          <AlertTriangle className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
-          <div>
-            <div className="font-semibold text-yellow-400 text-sm">
-              Trading Discipline = Consistent Profits
-            </div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              Never risk more than 2% of your capital per trade. Use stop-loss
-              always. Higher leverage = higher risk. Profits and losses are real
-              and affect your wallet balance.
+            <div className="flex flex-col gap-[4px]">
+              <span
+                style={{
+                  display: "block",
+                  width: 14,
+                  height: 2,
+                  background: "#000",
+                  borderRadius: 1,
+                }}
+              />
+              <span
+                style={{
+                  display: "block",
+                  width: 14,
+                  height: 2,
+                  background: "#000",
+                  borderRadius: 1,
+                }}
+              />
+              <span
+                style={{
+                  display: "block",
+                  width: 10,
+                  height: 2,
+                  background: "#000",
+                  borderRadius: 1,
+                }}
+              />
             </div>
           </div>
-        </motion.div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Left: Market overview + Positions */}
-          <div className="xl:col-span-2 space-y-6">
-            {/* Market selector */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="glass-card rounded-2xl p-5"
+          {/* Nav tabs */}
+          <div className="flex items-center gap-0 flex-1 overflow-x-auto">
+            {(["Convert", "Spot", "Futures", "Options", "TradFi"] as const).map(
+              (tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className="px-3 py-1 text-sm whitespace-nowrap flex-shrink-0"
+                  style={{
+                    color: tab === "Futures" ? "#F5F6F8" : "#5E616A",
+                    fontWeight: tab === "Futures" ? 700 : 400,
+                    borderBottom:
+                      tab === "Futures"
+                        ? "2px solid #F5F6F8"
+                        : "2px solid transparent",
+                  }}
+                >
+                  {tab}
+                </button>
+              ),
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* ── Section 2: Pair Header ── */}
+      <div
+        className="flex-shrink-0 px-4 py-2"
+        style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
+      >
+        <div className="flex items-center justify-between">
+          {/* Left: pair + change */}
+          <div className="flex flex-col">
+            <button
+              type="button"
+              onClick={() => setShowPairSelector((s) => !s)}
+              className="flex items-center gap-1"
             >
-              <h2 className="font-display font-bold text-foreground mb-4">
-                Market Prices
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {MARKETS.map((m, i) => {
-                  const price = prices[m.symbol];
-                  const isSelected = market.symbol === m.symbol;
-                  const anchor = anchorPrices.current[m.symbol] || 0;
-                  const diff = ((price - anchor) / anchor) * 100;
-                  return (
-                    <motion.button
-                      key={m.symbol}
-                      type="button"
-                      data-ocid={`futures.item.${i + 1}`}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.05 * i }}
-                      onClick={() => setMarket(m)}
-                      className={`glass-card rounded-xl p-4 text-left transition-all ${
-                        isSelected
-                          ? "border-gold/60 bg-gold/5"
-                          : "border-border/30 hover:border-gold/30"
-                      }`}
-                    >
-                      <div className="font-bold text-foreground text-sm">
-                        {m.shortName}
-                      </div>
-                      <div className="font-mono text-gold font-bold mt-1">
-                        ${price.toFixed(price < 10 ? 2 : 0)}
-                      </div>
-                      <div
-                        className={`text-xs mt-1 flex items-center gap-0.5 ${
-                          diff >= 0 ? "text-green-400" : "text-red-400"
-                        }`}
-                      >
-                        {diff >= 0 ? (
-                          <TrendingUp className="w-3 h-3" />
-                        ) : (
-                          <TrendingDown className="w-3 h-3" />
-                        )}
-                        {diff >= 0 ? "+" : ""}
-                        {diff.toFixed(3)}%
-                      </div>
-                      {isSelected && (
-                        <RefreshCw className="w-3 h-3 text-gold/60 animate-spin mt-2" />
-                      )}
-                    </motion.button>
-                  );
-                })}
-              </div>
-            </motion.div>
-
-            {/* Positions table */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35 }}
-              className="glass-card rounded-2xl p-5"
+              <span style={{ color: "#F5F6F8", fontSize: 22, fontWeight: 700 }}>
+                {pair.symbol}
+              </span>
+              <ChevronDown
+                style={{
+                  color: "#8A8F98",
+                  width: 16,
+                  height: 16,
+                  marginTop: 2,
+                }}
+              />
+            </button>
+            <span
+              style={{
+                color: "#E24A4A",
+                fontSize: 14,
+                fontWeight: 500,
+                marginTop: -2,
+              }}
             >
-              <Tabs defaultValue="open" data-ocid="futures.tab">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-display font-bold text-foreground">
-                    Positions
-                  </h2>
-                  <TabsList className="bg-background/50 border border-border/50">
-                    <TabsTrigger
-                      value="open"
-                      data-ocid="futures.tab"
-                      className="text-xs data-[state=active]:bg-gold data-[state=active]:text-navy"
-                    >
-                      Open ({openPositions.length})
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="history"
-                      data-ocid="futures.tab"
-                      className="text-xs data-[state=active]:bg-gold data-[state=active]:text-navy"
-                    >
-                      History ({closedPositions.length})
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-
-                <TabsContent value="open">
-                  {openPositions.length === 0 ? (
-                    <div
-                      data-ocid="futures.empty_state"
-                      className="text-muted-foreground text-sm text-center py-8"
-                    >
-                      No open positions. Use the panel to open your first trade.
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-xs text-muted-foreground border-b border-border/30">
-                            <th className="text-left pb-2">Symbol</th>
-                            <th className="text-left pb-2">Dir.</th>
-                            <th className="text-right pb-2">Lev.</th>
-                            <th className="text-right pb-2">Margin</th>
-                            <th className="text-right pb-2">Entry</th>
-                            <th className="text-right pb-2">Current</th>
-                            <th className="text-right pb-2">PnL</th>
-                            <th className="text-right pb-2">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {openPositions.map((p, i) => {
-                            const current = prices[p.symbol] || p.entryPrice;
-                            const priceDiff =
-                              p.direction === "LONG"
-                                ? current - p.entryPrice
-                                : p.entryPrice - current;
-                            const pnl =
-                              (priceDiff / p.entryPrice) * p.positionSize;
-                            return (
-                              <tr
-                                key={p.id}
-                                data-ocid={`futures.row.${i + 1}`}
-                                className="border-b border-border/10 text-xs"
-                              >
-                                <td className="py-2 font-medium">{p.symbol}</td>
-                                <td className="py-2">
-                                  <span
-                                    className={`font-bold ${p.direction === "LONG" ? "text-green-400" : "text-red-400"}`}
-                                  >
-                                    {p.direction}
-                                  </span>
-                                </td>
-                                <td className="py-2 text-right text-gold">
-                                  {p.leverage}x
-                                </td>
-                                <td className="py-2 text-right">
-                                  ${p.margin.toFixed(2)}
-                                </td>
-                                <td className="py-2 text-right font-mono">
-                                  ${p.entryPrice.toFixed(1)}
-                                </td>
-                                <td className="py-2 text-right font-mono">
-                                  ${current.toFixed(1)}
-                                </td>
-                                <td
-                                  className={`py-2 text-right font-bold ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}
-                                >
-                                  {pnl >= 0 ? "+" : ""}
-                                  {pnl.toFixed(2)}
-                                </td>
-                                <td className="py-2 text-right">
-                                  <Button
-                                    size="sm"
-                                    data-ocid="futures.delete_button"
-                                    onClick={() => closePosition(p.id)}
-                                    className="h-6 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 px-2"
-                                  >
-                                    Close
-                                  </Button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="history">
-                  {closedPositions.length === 0 ? (
-                    <div
-                      data-ocid="futures.empty_state"
-                      className="text-muted-foreground text-sm text-center py-8"
-                    >
-                      No closed positions yet.
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-xs text-muted-foreground border-b border-border/30">
-                            <th className="text-left pb-2">Symbol</th>
-                            <th className="text-left pb-2">Dir.</th>
-                            <th className="text-right pb-2">Margin</th>
-                            <th className="text-right pb-2">Entry</th>
-                            <th className="text-right pb-2">Exit</th>
-                            <th className="text-right pb-2">PnL</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {closedPositions.slice(0, 10).map((p, i) => (
-                            <tr
-                              key={p.id}
-                              data-ocid={`futures.row.${i + 1}`}
-                              className="border-b border-border/10 text-xs"
-                            >
-                              <td className="py-2 font-medium">{p.symbol}</td>
-                              <td className="py-2">
-                                <span
-                                  className={`font-bold ${p.direction === "LONG" ? "text-green-400" : "text-red-400"}`}
-                                >
-                                  {p.direction}
-                                </span>
-                              </td>
-                              <td className="py-2 text-right">
-                                ${p.margin.toFixed(2)}
-                              </td>
-                              <td className="py-2 text-right font-mono">
-                                ${p.entryPrice.toFixed(1)}
-                              </td>
-                              <td className="py-2 text-right font-mono">
-                                ${(p.closePrice || 0).toFixed(1)}
-                              </td>
-                              <td
-                                className={`py-2 text-right font-bold ${(p.pnl || 0) >= 0 ? "text-green-400" : "text-red-400"}`}
-                              >
-                                {(p.pnl || 0) >= 0 ? "+" : ""}
-                                {(p.pnl || 0).toFixed(2)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </TabsContent>
-              </Tabs>
-            </motion.div>
+              {price24h.change >= 0 ? "+" : ""}
+              {price24h.change.toFixed(2)}%
+            </span>
           </div>
 
-          {/* Right: Trading Panel */}
-          <div className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3 }}
-              className="glass-card rounded-2xl p-5"
+          {/* Right: MM pill + icons pill */}
+          <div className="flex items-center gap-2">
+            {/* MM funding rate pill */}
+            <div
+              className="flex flex-col items-center justify-center px-2 py-0.5"
+              style={{
+                border: "1px solid #29C784",
+                borderRadius: 20,
+                minWidth: 42,
+              }}
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-display font-bold text-foreground">
-                  Open Position
-                </h3>
-                <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
-                  Live
-                </Badge>
-              </div>
-
-              {/* Current price */}
-              <div className="bg-background/50 rounded-xl p-3 mb-4">
-                <div className="text-xs text-muted-foreground mb-1">
-                  {market.symbol}
-                </div>
-                <div className="font-display font-bold text-2xl text-gold">
-                  ${currentPrice.toFixed(currentPrice < 10 ? 3 : 1)}
-                </div>
-                <div className="flex items-center gap-1 text-xs text-green-400 mt-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  Live (Binance)
-                </div>
-              </div>
-
-              {isLoggedIn && user && (
-                <div className="bg-background/30 rounded-lg px-3 py-2 mb-4 text-xs flex justify-between">
-                  <span className="text-muted-foreground">Balance</span>
-                  <span className="font-bold text-gold">
-                    ${(user.balance || 0).toFixed(2)}
-                  </span>
-                </div>
-              )}
-
-              {/* Direction */}
-              <div className="space-y-2 mb-4">
-                <Label className="text-xs text-foreground/70">Direction</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    data-ocid="futures.toggle"
-                    onClick={() => setDirection("LONG")}
-                    className={`rounded-lg p-3 text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                      direction === "LONG"
-                        ? "bg-green-600 text-white"
-                        : "bg-background/50 text-muted-foreground border border-border/40 hover:border-green-500/30"
-                    }`}
-                  >
-                    <ArrowUpRight className="w-4 h-4" /> Long
-                  </button>
-                  <button
-                    type="button"
-                    data-ocid="futures.toggle"
-                    onClick={() => setDirection("SHORT")}
-                    className={`rounded-lg p-3 text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                      direction === "SHORT"
-                        ? "bg-red-600 text-white"
-                        : "bg-background/50 text-muted-foreground border border-border/40 hover:border-red-500/30"
-                    }`}
-                  >
-                    <ArrowDownRight className="w-4 h-4" /> Short
-                  </button>
-                </div>
-              </div>
-
-              {/* Leverage */}
-              <div className="space-y-2 mb-4">
-                <Label className="text-xs text-foreground/70">Leverage</Label>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {LEVERAGES.map((lev) => (
-                    <button
-                      key={lev}
-                      type="button"
-                      data-ocid="futures.toggle"
-                      onClick={() => setLeverage(lev)}
-                      className={`rounded-lg p-2 text-xs font-bold transition-all ${
-                        leverage === lev
-                          ? "bg-gold text-navy"
-                          : "bg-background/50 text-muted-foreground border border-border/40 hover:border-gold/30"
-                      }`}
-                    >
-                      {lev}x
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Margin */}
-              <div className="space-y-2 mb-4">
-                <Label className="text-xs text-foreground/70">
-                  Margin (USDT)
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  placeholder="Enter margin amount"
-                  data-ocid="futures.input"
-                  value={margin}
-                  onChange={(e) => setMargin(e.target.value)}
-                  className="bg-background/50 border-border/60 focus:border-gold/50"
-                />
-              </div>
-
-              {marginNum > 0 && (
-                <div className="bg-background/30 rounded-lg p-3 mb-4 space-y-2 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Entry Price</span>
-                    <span className="font-mono text-foreground">
-                      ${currentPrice.toFixed(1)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Position Size</span>
-                    <span className="font-mono text-foreground">
-                      ${positionSize.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">
-                      Liquidation Price
-                    </span>
-                    <span className="font-mono text-red-400">
-                      ${liquidationPrice.toFixed(1)}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <Button
-                data-ocid="futures.primary_button"
-                onClick={openPosition}
-                disabled={currentPrice === 0}
-                className={`w-full font-bold ${
-                  direction === "LONG"
-                    ? "bg-green-600 hover:bg-green-700 text-white"
-                    : "bg-red-600 hover:bg-red-700 text-white"
-                }`}
+              <span
+                style={{
+                  color: "#29C784",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  lineHeight: 1.2,
+                }}
               >
-                {currentPrice === 0
-                  ? "Loading Price..."
-                  : `Open ${direction} ${leverage}x`}
-              </Button>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.4 }}
-              className="space-y-3"
+                MM
+              </span>
+              <span style={{ color: "#29C784", fontSize: 10, lineHeight: 1.2 }}>
+                0.00%
+              </span>
+            </div>
+            {/* Candlestick + list icon pill */}
+            <div
+              className="flex items-center gap-2 px-2 py-1.5"
+              style={{ background: "#2A2D34", borderRadius: 20 }}
             >
-              <div className="glass-card rounded-xl p-4">
-                <div className="text-xs font-semibold text-gold mb-2">
-                  📈 Trading Tips
-                </div>
-                <ul className="text-xs text-muted-foreground space-y-1">
-                  <li>• Never risk more than 2% per trade</li>
-                  <li>• Always use stop-loss orders</li>
-                  <li>• Higher leverage = higher risk & reward</li>
-                  <li>• Trend is your friend</li>
-                </ul>
-              </div>
-              <div className="glass-card rounded-xl p-4 bg-green-500/5 border-green-500/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <Shield className="w-4 h-4 text-green-400" />
-                  <span className="text-xs font-semibold text-green-400">
-                    Trusted Platform
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Real profits credited and real losses deducted from your
-                  wallet balance.
-                </p>
-              </div>
-            </motion.div>
+              <BarChart2 style={{ width: 16, height: 16, color: "#8A8F98" }} />
+              <List style={{ width: 16, height: 16, color: "#8A8F98" }} />
+            </div>
           </div>
         </div>
       </div>
+
+      {/* ── Section 3: Sub-tabs ── */}
+      <div
+        className="flex-shrink-0 flex items-center justify-between px-4"
+        style={{
+          background: "#0B0B0D",
+          borderBottom: "1px solid #1C1E23",
+          height: 42,
+        }}
+      >
+        {/* Left tabs */}
+        <div className="flex items-center gap-4">
+          {(["Chart", "Overview", "Data", "Feed"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveSubTab(tab)}
+              style={{
+                color: activeSubTab === tab ? "#F5F6F8" : "#6A6E78",
+                fontSize: 14,
+                fontWeight: activeSubTab === tab ? 600 : 400,
+                paddingBottom: 4,
+                borderBottom:
+                  activeSubTab === tab
+                    ? "2px solid #F5F6F8"
+                    : "2px solid transparent",
+              }}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+        {/* Right icons */}
+        <div className="flex items-center gap-4">
+          <Zap style={{ width: 20, height: 20, color: "#F5F6F8" }} />
+          <button type="button" onClick={() => setIsFavorite((f) => !f)}>
+            <Star
+              style={{
+                width: 20,
+                height: 20,
+                color: isFavorite ? "#F2A23A" : "#F5F6F8",
+                fill: isFavorite ? "#F2A23A" : "none",
+              }}
+            />
+          </button>
+          <div className="relative">
+            <Bell style={{ width: 20, height: 20, color: "#F5F6F8" }} />
+            <span
+              className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
+              style={{ background: "#E24A4A" }}
+            />
+          </div>
+          <Share2 style={{ width: 20, height: 20, color: "#F5F6F8" }} />
+        </div>
+      </div>
+
+      {/* ── Section 4: Price ── */}
+      <div
+        className="flex-shrink-0 px-4 py-2"
+        style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
+      >
+        <div className="flex items-start justify-between">
+          {/* Left: price */}
+          <div className="flex flex-col">
+            <span style={{ color: "#6A6E78", fontSize: 12 }}>
+              Last Traded Price ▾
+            </span>
+            <span
+              className="font-mono font-bold transition-colors duration-300"
+              style={{
+                color: priceDisplayColor,
+                fontSize: 40,
+                lineHeight: 1.1,
+              }}
+            >
+              {price > 0
+                ? price.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                : "---"}
+            </span>
+            <span style={{ color: "#7B808B", fontSize: 13, marginTop: 2 }}>
+              Mark Price {markPrice > 0 ? markPrice.toFixed(2) : "---"}
+            </span>
+          </div>
+          {/* Right: 24h stats */}
+          <div className="flex flex-col items-end gap-0.5 text-right">
+            <div>
+              <span style={{ color: "#7B808B", fontSize: 11 }}>24h High</span>
+              <div style={{ color: "#F5F6F8", fontSize: 13, fontWeight: 500 }}>
+                {price24h.high > 0 ? price24h.high.toFixed(2) : "---"}
+              </div>
+            </div>
+            <div>
+              <span style={{ color: "#7B808B", fontSize: 11 }}>24h Low</span>
+              <div style={{ color: "#F5F6F8", fontSize: 13, fontWeight: 500 }}>
+                {price24h.low > 0 ? price24h.low.toFixed(2) : "---"}
+              </div>
+            </div>
+            <div>
+              <span style={{ color: "#7B808B", fontSize: 11 }}>
+                24h Turnover
+              </span>
+              <div style={{ color: "#F5F6F8", fontSize: 13, fontWeight: 500 }}>
+                {price24h.vol > 0 ? formatVol(price24h.vol) : "---"}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Section 5: Announcement banner ── */}
+      <AnimatePresence>
+        {showAnnouncement && (
+          <motion.div
+            initial={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="flex-shrink-0 flex items-center px-4 py-2 gap-2"
+            style={{ background: "#0B0B0D", borderBottom: "1px solid #1C1E23" }}
+          >
+            <span style={{ fontSize: 16 }}>📢</span>
+            <span style={{ color: "#F5F6F8", fontSize: 12, flex: 1 }}>
+              Delisting of CTSIUSDT Perpetual Contract
+            </span>
+            <button type="button" onClick={() => setShowAnnouncement(false)}>
+              <X style={{ width: 16, height: 16, color: "#8A8F98" }} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Section 6: Time interval row ── */}
+      <div
+        className="flex-shrink-0 flex items-center px-4"
+        style={{
+          background: "#0B0B0D",
+          borderBottom: "1px solid #1C1E23",
+          height: 38,
+        }}
+      >
+        {/* Time label */}
+        <span style={{ color: "#6A6E78", fontSize: 13, marginRight: 6 }}>
+          Time
+        </span>
+        {/* Interval buttons */}
+        {INTERVALS.map((iv) => (
+          <button
+            key={iv}
+            type="button"
+            onClick={() => setActiveInterval(iv)}
+            className="px-2 py-0.5"
+            style={{
+              color: activeInterval === iv ? "#F5F6F8" : "#6A6E78",
+              fontWeight: activeInterval === iv ? 700 : 400,
+              fontSize: 13,
+            }}
+          >
+            {iv}
+            {iv === "1m" ? " ▾" : ""}
+          </button>
+        ))}
+        {/* Separator */}
+        <div
+          className="w-px mx-2"
+          style={{ height: 16, background: "#2A2D34" }}
+        />
+        {/* Right icons */}
+        <span style={{ color: "#6A6E78", fontSize: 13 }}>Depth</span>
+        <div className="flex items-center gap-3 ml-3">
+          <div className="relative">
+            <Pencil style={{ width: 16, height: 16, color: "#F5F6F8" }} />
+          </div>
+          <div className="relative">
+            <Radio style={{ width: 16, height: 16, color: "#F5F6F8" }} />
+            <span
+              className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
+              style={{ background: "#E24A4A" }}
+            />
+          </div>
+          <div className="relative">
+            <Grid style={{ width: 16, height: 16, color: "#F5F6F8" }} />
+            <span
+              className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
+              style={{ background: "#E24A4A" }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Section 7: Chart / Overview / Data / Feed ── */}
+      <div className="flex-1 min-h-0" style={{ background: "#0B0B0D" }}>
+        {activeSubTab === "Chart" &&
+          (candles.length > 0 ? (
+            <CandleChart
+              candles={candles}
+              indicators={activeIndicators}
+              markPrice={markPrice}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <Activity
+                className="w-6 h-6 animate-pulse"
+                style={{ color: "#4A4E58" }}
+              />
+            </div>
+          ))}
+        {activeSubTab === "Overview" && (
+          <OverviewTab price={price} markPrice={markPrice} pair={pair} />
+        )}
+        {activeSubTab === "Data" && <DataTab price={price} />}
+        {activeSubTab === "Feed" && <FeedTab />}
+      </div>
+
+      {/* ── Section 8: Indicators row ── */}
+      <div
+        className="flex-shrink-0 flex items-center gap-1 px-4 overflow-x-auto"
+        style={{
+          background: "#0B0B0D",
+          borderTop: "1px solid #1C1E23",
+          height: 40,
+          scrollbarWidth: "none",
+        }}
+      >
+        {INDICATORS.map((ind) => (
+          <button
+            key={ind}
+            type="button"
+            onClick={() => toggleIndicator(ind)}
+            className="flex-shrink-0 px-2"
+            style={{
+              color: activeIndicators.includes(ind) ? "#F5F6F8" : "#6A6E78",
+              fontWeight: activeIndicators.includes(ind) ? 700 : 400,
+              fontSize: 13,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {ind}
+          </button>
+        ))}
+        <div className="flex-1" />
+        <Maximize2
+          style={{ width: 18, height: 18, color: "#6A6E78", flexShrink: 0 }}
+        />
+      </div>
+
+      {/* ── Section 9: Bottom Trading Panel ── */}
+      <div
+        className="flex-shrink-0 flex items-stretch gap-2 px-3 py-2"
+        style={{ background: "#0B0B0D", borderTop: "1px solid #1C1E23" }}
+      >
+        {/* Long pill */}
+        <button
+          type="button"
+          onClick={() => handleTrade("LONG")}
+          className="flex-1 flex flex-col items-center justify-center py-3 active:scale-95 transition-transform"
+          style={{ background: "#1FC57A", borderRadius: 9999 }}
+          data-ocid="futures.long_button"
+        >
+          <span style={{ color: "#FFFFFF", fontSize: 15, fontWeight: 500 }}>
+            Long
+          </span>
+          <span
+            style={{
+              color: "#FFFFFF",
+              fontSize: 17,
+              fontWeight: 700,
+              fontFamily: "monospace",
+            }}
+          >
+            {price > 0 ? price.toFixed(2) : "---"}
+          </span>
+        </button>
+
+        {/* Quantity pill */}
+        <div
+          className="flex flex-col items-center justify-center px-4 py-2"
+          style={{ background: "#2A2D34", borderRadius: 9999, minWidth: 90 }}
+        >
+          <span style={{ color: "#8A8F98", fontSize: 11 }}>Quantity</span>
+          <input
+            type="number"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            placeholder={pair.base}
+            className="bg-transparent text-center outline-none w-full text-sm font-bold"
+            style={{ color: "#F5F6F8", fontFamily: "monospace" }}
+            data-ocid="futures.input"
+          />
+        </div>
+
+        {/* Short pill */}
+        <button
+          type="button"
+          onClick={() => handleTrade("SHORT")}
+          className="flex-1 flex flex-col items-center justify-center py-3 active:scale-95 transition-transform"
+          style={{ background: "#E24A4A", borderRadius: 9999 }}
+          data-ocid="futures.short_button"
+        >
+          <span style={{ color: "#FFFFFF", fontSize: 15, fontWeight: 500 }}>
+            Short
+          </span>
+          <span
+            style={{
+              color: "#FFFFFF",
+              fontSize: 17,
+              fontWeight: 700,
+              fontFamily: "monospace",
+            }}
+          >
+            {price > 0 ? (price - 0.01).toFixed(2) : "---"}
+          </span>
+        </button>
+      </div>
+
+      {/* ── Section 10: Bottom App Nav ── */}
+      <nav
+        className="flex-shrink-0 flex items-center justify-around py-2"
+        style={{ background: "#14161B", borderTop: "1px solid #1C1E23" }}
+      >
+        {[
+          { icon: <Home size={24} />, label: "Home", to: "/" },
+          { icon: <TrendingUp size={24} />, label: "Markets", to: "/crypto" },
+          {
+            icon: <BarChart2 size={24} />,
+            label: "Trade",
+            to: "/futures",
+            active: true,
+          },
+          { icon: <PieChart size={24} />, label: "Earn", to: "/earn" },
+          { icon: <Wallet size={24} />, label: "Assets", to: "/wallet" },
+        ].map((item) => (
+          <Link
+            key={item.label}
+            to={item.to}
+            className="flex flex-col items-center gap-0.5"
+            data-ocid={`nav.${item.label.toLowerCase()}_link`}
+          >
+            <span style={{ color: item.active ? "#F5F6F8" : "#6A6E78" }}>
+              {item.icon}
+            </span>
+            <span
+              style={{
+                color: item.active ? "#F5F6F8" : "#6A6E78",
+                fontSize: 11,
+              }}
+            >
+              {item.label}
+            </span>
+          </Link>
+        ))}
+      </nav>
+
+      {/* ── Pair Selector Modal ── */}
+      <AnimatePresence>
+        {showPairSelector && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 flex items-start justify-center pt-20"
+            style={{ background: "rgba(0,0,0,0.7)", zIndex: 100 }}
+            onClick={() => setShowPairSelector(false)}
+          >
+            <motion.div
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -20, opacity: 0 }}
+              className="rounded-2xl p-4 w-72"
+              style={{ background: "#1C1E23", border: "1px solid #2A2D34" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span style={{ color: "#F5F6F8", fontWeight: 700 }}>
+                  Select Pair
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowPairSelector(false)}
+                >
+                  <X style={{ width: 18, height: 18, color: "#8A8F98" }} />
+                </button>
+              </div>
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-xl mb-3"
+                style={{ background: "#0B0B0D" }}
+              >
+                <Search style={{ width: 14, height: 14, color: "#8A8F98" }} />
+                <input
+                  placeholder="Search pairs..."
+                  className="flex-1 bg-transparent text-sm outline-none"
+                  style={{ color: "#F5F6F8" }}
+                />
+              </div>
+              {TRADING_PAIRS.map((p) => (
+                <button
+                  key={p.symbol}
+                  type="button"
+                  className="w-full flex items-center justify-between px-3 py-3 rounded-xl hover:bg-white/5 transition-colors"
+                  onClick={() => {
+                    setPair(p);
+                    setShowPairSelector(false);
+                  }}
+                >
+                  <span
+                    style={{
+                      color: pair.symbol === p.symbol ? "#F2A23A" : "#F5F6F8",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {p.symbol}
+                  </span>
+                  <span style={{ color: "#6A6E78", fontSize: 12 }}>
+                    Perpetual
+                  </span>
+                </button>
+              ))}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
