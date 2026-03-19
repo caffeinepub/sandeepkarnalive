@@ -122,7 +122,13 @@ async function syncUserToCanister(item: PendingRegister): Promise<boolean> {
       item.referredBy,
     );
     return true;
-  } catch {
+  } catch (err: unknown) {
+    const msg = String(err);
+    // If user already registered, treat as success (idempotent)
+    if (msg.includes("already taken") || msg.includes("already registered")) {
+      return true;
+    }
+    console.error("[SKCE] canister sync failed:", msg);
     return false;
   }
 }

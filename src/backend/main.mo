@@ -157,29 +157,48 @@ actor {
     name : Text;
   };
 
-  // Persistent State
-  var nextVlogId = 1;
-  var nextAnnouncementId = 1;
-  var nextAdId = 1;
-  var nextDepositId = 1;
-  var nextWithdrawalId = 1;
-  var nextEarnId = 1;
+  // ============================================================
+  // STABLE STORAGE - Data persists across canister upgrades
+  // ============================================================
+  stable var stableNextVlogId : Nat = 1;
+  stable var stableNextAnnouncementId : Nat = 1;
+  stable var stableNextAdId : Nat = 1;
+  stable var stableNextDepositId : Nat = 1;
+  stable var stableNextWithdrawalId : Nat = 1;
+  stable var stableNextEarnId : Nat = 1;
 
-  let vlogPosts = Map.empty<Nat, VlogPost>();
-  let announcements = Map.empty<Nat, Announcement>();
-  let ads = Map.empty<Nat, Ad>();
+  stable var stableVlogPosts : [(Nat, VlogPost)] = [];
+  stable var stableAnnouncements : [(Nat, Announcement)] = [];
+  stable var stableAds : [(Nat, Ad)] = [];
+  stable var stableDepositRequests : [(Nat, DepositRequest)] = [];
+  stable var stableWithdrawalRequests : [(Nat, WithdrawalRequest)] = [];
+  stable var stableEarnRecords : [(Nat, EarnRecord)] = [];
+  stable var stableUsernameUsers : [(Text, UserRegistrationData)] = [];
+  stable var stableUsernameBalances : [(Text, Nat)] = [];
+
+  // Mutable counters (restored from stable on upgrade)
+  var nextVlogId = stableNextVlogId;
+  var nextAnnouncementId = stableNextAnnouncementId;
+  var nextAdId = stableNextAdId;
+  var nextDepositId = stableNextDepositId;
+  var nextWithdrawalId = stableNextWithdrawalId;
+  var nextEarnId = stableNextEarnId;
+
+  let vlogPosts = Map.fromIter<Nat, VlogPost>(stableVlogPosts.vals());
+  let announcements = Map.fromIter<Nat, Announcement>(stableAnnouncements.vals());
+  let ads = Map.fromIter<Nat, Ad>(stableAds.vals());
 
   let userAccounts = Map.empty<Principal, UserAccount>();
   let userRegistrationData = Map.empty<Principal, UserRegistrationData>();
-  let depositRequests = Map.empty<Nat, DepositRequest>();
-  let withdrawalRequests = Map.empty<Nat, WithdrawalRequest>();
-  let earnRecords = Map.empty<Nat, EarnRecord>();
+  let depositRequests = Map.fromIter<Nat, DepositRequest>(stableDepositRequests.vals());
+  let withdrawalRequests = Map.fromIter<Nat, WithdrawalRequest>(stableWithdrawalRequests.vals());
+  let earnRecords = Map.fromIter<Nat, EarnRecord>(stableEarnRecords.vals());
 
   let userProfiles = Map.empty<Principal, UserProfile>();
 
-  // Anonymous user storage (cross-device, no II needed)
-  let usernameUsers = Map.empty<Text, UserRegistrationData>();
-  let usernameBalances = Map.empty<Text, Nat>();
+  // Anonymous user storage (cross-device, no II needed) - STABLE
+  let usernameUsers = Map.fromIter<Text, UserRegistrationData>(stableUsernameUsers.vals());
+  let usernameBalances = Map.fromIter<Text, Nat>(stableUsernameBalances.vals());
 
   // Authorization System
   let accessControlState = AccessControl.initState();
@@ -1263,6 +1282,31 @@ actor {
 
   public query func getUserBalancePublic(username : Text) : async Nat {
     switch (usernameBalances.get(username)) { case (null) { 0 }; case (?b) { b } };
+  };
+
+
+  // ============================================================
+  // UPGRADE HOOKS - Save data to stable storage before upgrade
+  // ============================================================
+  system func preupgrade() {
+    stableNextVlogId := nextVlogId;
+    stableNextAnnouncementId := nextAnnouncementId;
+    stableNextAdId := nextAdId;
+    stableNextDepositId := nextDepositId;
+    stableNextWithdrawalId := nextWithdrawalId;
+    stableNextEarnId := nextEarnId;
+    stableVlogPosts := vlogPosts.toArray();
+    stableAnnouncements := announcements.toArray();
+    stableAds := ads.toArray();
+    stableDepositRequests := depositRequests.toArray();
+    stableWithdrawalRequests := withdrawalRequests.toArray();
+    stableEarnRecords := earnRecords.toArray();
+    stableUsernameUsers := usernameUsers.toArray();
+    stableUsernameBalances := usernameBalances.toArray();
+  };
+
+  system func postupgrade() {
+    // Data already restored from stable vars in variable initialization
   };
 
 

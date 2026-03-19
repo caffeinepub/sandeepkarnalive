@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -16,18 +17,6 @@ type Position = {
   timestamp: number;
 };
 
-function getWalletBalance(): Record<string, number> {
-  try {
-    const raw = localStorage.getItem("skce_wallet_balance");
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return { USDT: 0, BTC: 0, ETH: 0, SOL: 0, BNB: 0 };
-}
-
-function setWalletBalance(bal: Record<string, number>) {
-  localStorage.setItem("skce_wallet_balance", JSON.stringify(bal));
-}
-
 function loadPositions(): Position[] {
   try {
     return JSON.parse(localStorage.getItem("skce_positions") || "[]");
@@ -41,6 +30,7 @@ function savePositions(positions: Position[]) {
 }
 
 export function Positions() {
+  const { user, updateUser } = useAuth();
   const [positions, setPositions] = useState<Position[]>(loadPositions);
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [refreshing, setRefreshing] = useState(false);
@@ -98,14 +88,28 @@ export function Positions() {
     const pos = positions.find((p) => p.id === id);
     if (!pos) return;
     const pnl = calcPNL(pos);
-    const bal = getWalletBalance();
-    bal.USDT = (bal.USDT || 0) + pos.margin + pnl;
-    setWalletBalance(bal);
+    const returnAmount = pos.margin + pnl; // margin wapas + profit ya - loss
+
+    // AuthContext user.balance update karo — yahi navbar mein dikhta hai
+    if (user) {
+      const currentBalance = user.balance || 0;
+      const newBalance = Math.max(0, currentBalance + returnAmount);
+      updateUser({ balance: newBalance });
+    }
+
     const updated = positions.filter((p) => p.id !== id);
     setPositions(updated);
     savePositions(updated);
+
+    const returnDisplay =
+      returnAmount >= 0
+        ? `+$${returnAmount.toFixed(2)}`
+        : `-$${Math.abs(returnAmount).toFixed(2)}`;
     toast[pnl >= 0 ? "success" : "error"](
-      `Position closed: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
+      `Position closed: PNL ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} USDT`,
+      {
+        description: `Balance updated: ${returnDisplay} USDT returned to wallet`,
+      },
     );
   }
 
@@ -150,6 +154,31 @@ export function Positions() {
             />
           </button>
         </div>
+
+        {/* Current Balance Display */}
+        {user && (
+          <div
+            className="rounded-xl p-4 mb-4 flex items-center justify-between"
+            style={{
+              background: "rgba(255,215,0,0.05)",
+              border: "1px solid rgba(255,215,0,0.2)",
+            }}
+            data-ocid="positions.balance.display"
+          >
+            <span
+              className="text-sm"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+            >
+              Available Balance
+            </span>
+            <span
+              className="font-bold font-mono text-lg"
+              style={{ color: "#FFD700" }}
+            >
+              ${(user.balance || 0).toFixed(2)} USDT
+            </span>
+          </div>
+        )}
 
         {/* Total PNL Summary */}
         {positions.length > 0 && (
