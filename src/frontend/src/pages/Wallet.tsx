@@ -34,8 +34,9 @@ import {
   Wallet as WalletIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { createActorWithConfig } from "../config";
 import { useAuth } from "../contexts/AuthContext";
 import { useActor } from "../hooks/useActor";
 
@@ -150,7 +151,6 @@ function AnimatedBalance({ value }: { value: number }) {
     function update(now: number) {
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      // Ease out cubic
       const eased = 1 - (1 - progress) ** 3;
       setDisplay(eased * end);
       if (progress < 1) requestAnimationFrame(update);
@@ -185,9 +185,46 @@ interface WithdrawConfirmation {
   remainingBalance: number;
 }
 
+// Pending queue helpers
+interface PendingDeposit {
+  username: string;
+  currency: string;
+  amount: string;
+  txHash: string;
+}
+interface PendingWithdrawal {
+  username: string;
+  amount: number;
+  currency: string;
+  walletAddress: string;
+}
+
+function getPendingDeposits(): PendingDeposit[] {
+  try {
+    return JSON.parse(localStorage.getItem("sce_pending_deposits") || "[]");
+  } catch {
+    return [];
+  }
+}
+function savePendingDeposits(q: PendingDeposit[]) {
+  localStorage.setItem("sce_pending_deposits", JSON.stringify(q));
+}
+function getPendingWithdrawals(): PendingWithdrawal[] {
+  try {
+    return JSON.parse(localStorage.getItem("sce_pending_withdrawals") || "[]");
+  } catch {
+    return [];
+  }
+}
+function savePendingWithdrawals(q: PendingWithdrawal[]) {
+  localStorage.setItem("sce_pending_withdrawals", JSON.stringify(q));
+}
+
 export function Wallet() {
   const { user, isLoggedIn } = useAuth();
   const { actor } = useActor();
+  const actorRef = useRef(actor);
+  actorRef.current = actor;
 
   const [depositForm, setDepositForm] = useState({
     currency: "USDT",
@@ -210,6 +247,55 @@ export function Wallet() {
   const [flashMap, setFlashMap] = useState<Record<string, "up" | "down">>({});
 
   const balance = user?.balance || 0;
+
+  // Process pending deposits/withdrawals when actor becomes available
+  useEffect(() => {
+    if (!actor || !user) return;
+    // Process pending deposits
+    const pendingDeps = getPendingDeposits();
+    const myDeps = pendingDeps.filter((d) => d.username === user.username);
+    const otherDeps = pendingDeps.filter((d) => d.username !== user.username);
+    if (myDeps.length > 0) {
+      (async () => {
+        const remaining: PendingDeposit[] = [];
+        for (const d of myDeps) {
+          try {
+            await (actor as any).submitDepositPublic(
+              d.username,
+              d.currency,
+              d.amount,
+              d.txHash,
+            );
+          } catch {
+            remaining.push(d);
+          }
+        }
+        savePendingDeposits([...otherDeps, ...remaining]);
+      })();
+    }
+    // Process pending withdrawals
+    const pendingWiths = getPendingWithdrawals();
+    const myWiths = pendingWiths.filter((w) => w.username === user.username);
+    const otherWiths = pendingWiths.filter((w) => w.username !== user.username);
+    if (myWiths.length > 0) {
+      (async () => {
+        const remaining: PendingWithdrawal[] = [];
+        for (const w of myWiths) {
+          try {
+            await (actor as any).submitWithdrawalPublic(
+              w.username,
+              BigInt(w.amount),
+              w.currency,
+              w.walletAddress,
+            );
+          } catch {
+            remaining.push(w);
+          }
+        }
+        savePendingWithdrawals([...otherWiths, ...remaining]);
+      })();
+    }
+  }, [actor, user]);
 
   // Live prices
   useEffect(() => {
@@ -281,17 +367,37 @@ export function Wallet() {
     }
     setDepositLoading(true);
     try {
-      if (actor) {
-        try {
-          await (actor as any).submitDepositPublic(
-            user!.username,
-            depositForm.currency,
-            depositForm.amount,
-            depositForm.txHash,
-          );
-        } catch {
-          /* ignore */
-        }
+      // Direct actor - no hook timing dependency
+      try {
+        const freshActor = await createActorWithConfig();
+        await (freshActor as any).submitDepositPublic(
+          user!.username,
+          depositForm.currency,
+          depositForm.amount,
+          depositForm.txHash,
+        );
+      } catch {
+        // Canister call failed - add to pending queue for retry
+        const q = getPendingDeposits();
+        q.push({
+          username: user!.username,
+          currency: depositForm.currency,
+          amount: depositForm.amount,
+          txHash: depositForm.txHash,
+        });
+        savePendingDeposits(q);
+        // Retry after 5s
+        setTimeout(async () => {
+          try {
+            const retryActor = await createActorWithConfig();
+            await (retryActor as any).submitDepositPublic(
+              user!.username,
+              depositForm.currency,
+              depositForm.amount,
+              depositForm.txHash,
+            );
+          } catch {}
+        }, 5000);
       }
       const orderId = generateOrderId();
       addTx({
@@ -337,17 +443,38 @@ export function Wallet() {
     }
     setWithdrawLoading(true);
     try {
-      if (actor) {
-        try {
-          await (actor as any).submitWithdrawalPublic(
-            user!.username,
-            BigInt(Math.round(amt * 1000)),
-            withdrawForm.currency,
-            withdrawForm.walletAddress,
-          );
-        } catch {
-          /* ignore */
-        }
+      const rawAmt = BigInt(Math.round(amt * 1000));
+      // Direct actor - no hook timing dependency
+      try {
+        const freshActor = await createActorWithConfig();
+        await (freshActor as any).submitWithdrawalPublic(
+          user!.username,
+          rawAmt,
+          withdrawForm.currency,
+          withdrawForm.walletAddress,
+        );
+      } catch {
+        // Queue it for retry
+        const q = getPendingWithdrawals();
+        q.push({
+          username: user!.username,
+          amount: Number(rawAmt),
+          currency: withdrawForm.currency,
+          walletAddress: withdrawForm.walletAddress,
+        });
+        savePendingWithdrawals(q);
+        // Retry after 5s
+        setTimeout(async () => {
+          try {
+            const retryActor = await createActorWithConfig();
+            await (retryActor as any).submitWithdrawalPublic(
+              user!.username,
+              rawAmt,
+              withdrawForm.currency,
+              withdrawForm.walletAddress,
+            );
+          } catch {}
+        }, 5000);
       }
       const orderId = generateOrderId();
       addTx({
@@ -419,7 +546,6 @@ export function Wallet() {
               "0 0 40px rgba(255,215,0,0.1), 0 20px 60px rgba(0,0,0,0.4)",
           }}
         >
-          {/* BG decoration */}
           <div
             className="absolute top-0 right-0 w-64 h-64 rounded-full pointer-events-none"
             style={{
@@ -428,7 +554,6 @@ export function Wallet() {
               filter: "blur(30px)",
             }}
           />
-
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-2">
               <WalletIcon className="w-4 h-4 text-white/40" />
@@ -438,9 +563,7 @@ export function Wallet() {
             </div>
             <AnimatedBalance value={balance} />
             <span className="text-white/40 text-sm ml-1">USDT</span>
-
             <div className="flex flex-wrap gap-3 mt-6">
-              {/* 3D Deposit button */}
               <button
                 type="button"
                 onClick={() => document.getElementById("deposit-tab")?.click()}
@@ -449,7 +572,6 @@ export function Wallet() {
               >
                 <ArrowDownLeft className="w-4 h-4" /> Deposit
               </button>
-              {/* 3D Withdraw button */}
               <button
                 type="button"
                 onClick={() => document.getElementById("withdraw-tab")?.click()}
@@ -610,7 +732,6 @@ export function Wallet() {
                     </Select>
                   </div>
 
-                  {/* Wallet address display */}
                   {selectedAddress && (
                     <div
                       className="rounded-xl p-4"
@@ -644,7 +765,6 @@ export function Wallet() {
                     </div>
                   )}
 
-                  {/* Bybit Pay QR */}
                   <div
                     className="rounded-xl p-4 flex items-center justify-between"
                     style={{
@@ -846,7 +966,6 @@ export function Wallet() {
                     />
                   </div>
 
-                  {/* Live summary */}
                   {showWithdrawSummary && (
                     <motion.div
                       initial={{ opacity: 0, y: -5 }}

@@ -22,6 +22,7 @@ import { motion } from "motion/react";
 import React from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { createActorWithConfig } from "../config";
 import { useActor } from "../hooks/useActor";
 
 type Signal = {
@@ -670,15 +671,15 @@ export function AdminDashboard() {
     };
   }, []);
 
-  // Fetch canister users, deposits, withdrawals periodically
+  // Fetch canister users, deposits, withdrawals periodically - DIRECT actor, no hook dependency
   useEffect(() => {
     async function fetchCanisterData() {
-      if (!actor) return;
       try {
+        const freshActor = await createActorWithConfig();
         const [users, deps, withs] = await Promise.all([
-          (actor as any).getAllUsersPublic(),
-          (actor as any).getAllDepositsPublic(),
-          (actor as any).getAllWithdrawalsPublic(),
+          (freshActor as any).getAllUsersPublic(),
+          (freshActor as any).getAllDepositsPublic(),
+          (freshActor as any).getAllWithdrawalsPublic(),
         ]);
         if (Array.isArray(users)) setCanisterUsers(users);
         if (Array.isArray(deps)) {
@@ -714,13 +715,20 @@ export function AdminDashboard() {
           );
         }
       } catch {
-        // silent fail
+        // silent fail - retry on next interval
       }
     }
+    // Fetch immediately on mount
     fetchCanisterData();
-    const interval = setInterval(fetchCanisterData, 4000);
-    return () => clearInterval(interval);
-  }, [actor]);
+    // Also fetch after 2s (in case canister takes a moment)
+    const t1 = setTimeout(fetchCanisterData, 2000);
+    // Then every 5 seconds
+    const interval = setInterval(fetchCanisterData, 5000);
+    return () => {
+      clearTimeout(t1);
+      clearInterval(interval);
+    };
+  }, []); // No dependency on actor - creates fresh actor each time
 
   // Forms
   const [vlogForm, setVlogForm] = useState({
@@ -1000,6 +1008,7 @@ export function AdminDashboard() {
               ["ads", "Ads/Promos"],
               ["signals", "Signals"],
               ["tasks", "Tasks"],
+              ["new-users", `🆕 New Users (${canisterUsers.length})`],
               ["deposits", `Deposits (${deposits.length})`],
               ["withdrawals", `Withdrawals (${withdrawals.length})`],
               ["futures", "Futures"],
@@ -2390,6 +2399,221 @@ export function AdminDashboard() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* New Registrations - Dedicated Section */}
+          <TabsContent value="new-users">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-[#FFD700]">
+                    New User Registrations
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    All users registered from any device — synced from canister
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-sm font-medium">
+                    ✓ {canisterUsers.length} Registered Users
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const freshActor = await createActorWithConfig();
+                        const users = await (
+                          freshActor as any
+                        ).getAllUsersPublic();
+                        if (Array.isArray(users)) setCanisterUsers(users);
+                      } catch {}
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/30 text-sm hover:bg-[#FFD700]/30 transition-colors"
+                  >
+                    ↻ Refresh
+                  </button>
+                </div>
+              </div>
+
+              {canisterUsers.length === 0 ? (
+                <div className="glass-card rounded-2xl p-12 text-center">
+                  <div className="text-4xl mb-3">👤</div>
+                  <p className="text-muted-foreground">
+                    No users registered yet — or canister data is loading...
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Data auto-refreshes every 5 seconds
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {canisterUsers.map((u: any, i: number) => {
+                    const joinDate = u.joinDate
+                      ? new Date(Number(u.joinDate) / 1_000_000)
+                      : null;
+                    const balance = Number(u.balance) / 1_000_000;
+                    const totalEarned = Number(u.totalEarned) / 1_000_000;
+                    const totalDeposited = Number(u.totalDeposited) / 1_000_000;
+                    return (
+                      <motion.div
+                        key={`new-user-${u.username}`}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.03 }}
+                        className="glass-card rounded-xl p-4 border border-green-500/20 hover:border-green-500/40 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-4 flex-wrap">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FFD700] to-[#00F0FF] flex items-center justify-center text-navy font-bold text-lg">
+                              {(u.fullName ||
+                                u.username ||
+                                "?")[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-bold text-white">
+                                {u.fullName || u.username}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                @{u.username}
+                              </div>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="border-green-500/40 text-green-400 text-xs"
+                          >
+                            ✓ Canister Verified
+                          </Badge>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="bg-white/5 rounded-lg p-2.5">
+                            <div className="text-xs text-muted-foreground">
+                              Email
+                            </div>
+                            <div className="text-sm text-white truncate">
+                              {u.email || "—"}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 rounded-lg p-2.5">
+                            <div className="text-xs text-muted-foreground">
+                              Balance
+                            </div>
+                            <div className="text-sm text-green-400 font-mono">
+                              ${balance.toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 rounded-lg p-2.5">
+                            <div className="text-xs text-muted-foreground">
+                              Total Deposited
+                            </div>
+                            <div className="text-sm text-blue-400 font-mono">
+                              ${totalDeposited.toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 rounded-lg p-2.5">
+                            <div className="text-xs text-muted-foreground">
+                              Joined
+                            </div>
+                            <div className="text-sm text-white">
+                              {joinDate ? joinDate.toLocaleDateString() : "—"}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 rounded-lg p-2.5">
+                            <div className="text-xs text-muted-foreground">
+                              Total Earned
+                            </div>
+                            <div className="text-sm text-yellow-400 font-mono">
+                              ${totalEarned.toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 rounded-lg p-2.5">
+                            <div className="text-xs text-muted-foreground">
+                              Referral Code
+                            </div>
+                            <div className="text-sm text-white font-mono">
+                              {u.referralCode || "—"}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 rounded-lg p-2.5">
+                            <div className="text-xs text-muted-foreground">
+                              Referred By
+                            </div>
+                            <div className="text-sm text-white">
+                              {u.referredBy?.[0] || "Direct"}
+                            </div>
+                          </div>
+                          {u.principalId && (
+                            <div className="bg-white/5 rounded-lg p-2.5">
+                              <div className="text-xs text-muted-foreground">
+                                Principal ID
+                              </div>
+                              <div className="text-xs text-white font-mono truncate">
+                                {String(u.principalId).substring(0, 20)}...
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        {/* Set Balance Control */}
+                        <div className="mt-3 flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            Set Balance:
+                          </span>
+                          <Input
+                            type="number"
+                            className="w-24 h-7 text-xs bg-white/5 border-white/10"
+                            placeholder="USDT"
+                            value={
+                              setBalanceForm.username === u.username
+                                ? setBalanceForm.value
+                                : ""
+                            }
+                            onChange={(e) =>
+                              setSetBalanceForm({
+                                username: u.username,
+                                value: e.target.value,
+                              })
+                            }
+                          />
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs bg-green-600 hover:bg-green-700"
+                            onClick={async () => {
+                              if (!actor) return;
+                              try {
+                                const balanceUsdt =
+                                  Number.parseFloat(setBalanceForm.value) || 0;
+                                const balanceMicro = BigInt(
+                                  Math.round(balanceUsdt * 1_000_000),
+                                );
+                                await (actor as any).adminUpdateUserBalance(
+                                  u.principalId,
+                                  balanceMicro,
+                                );
+                                const freshActor =
+                                  await createActorWithConfig();
+                                const result = await (
+                                  freshActor as any
+                                ).getAllUsersPublic();
+                                if (Array.isArray(result))
+                                  setCanisterUsers(result);
+                                setSetBalanceForm({ username: "", value: "" });
+                                toast.success(
+                                  `Balance updated for ${u.username}`,
+                                );
+                              } catch {
+                                toast.error("Failed to update balance");
+                              }
+                            }}
+                          >
+                            Update
+                          </Button>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
                 </div>
               )}
             </div>

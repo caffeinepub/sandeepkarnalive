@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createActorWithConfig } from "../config";
 import { useActor } from "../hooks/useActor";
 
 export interface LocalUser {
@@ -86,6 +87,46 @@ function getCurrentUser(): AuthUser | null {
   }
 }
 
+// Queue helpers for pending canister syncs
+interface PendingRegister {
+  username: string;
+  email: string;
+  fullName: string;
+  joinDate: number;
+  referralCode: string;
+  referredBy: string[];
+}
+
+function getPendingRegisters(): PendingRegister[] {
+  try {
+    return JSON.parse(localStorage.getItem("sce_pending_register") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function savePendingRegisters(q: PendingRegister[]) {
+  localStorage.setItem("sce_pending_register", JSON.stringify(q));
+}
+
+// Direct canister registration - bypasses React hook timing issues
+async function syncUserToCanister(item: PendingRegister): Promise<boolean> {
+  try {
+    const freshActor = await createActorWithConfig();
+    await (freshActor as any).registerUserPublic(
+      item.username,
+      item.email,
+      item.fullName,
+      BigInt(item.joinDate),
+      item.referralCode,
+      item.referredBy,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -115,6 +156,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshUser();
     setIsLoading(false);
   }, [refreshUser]);
+
+  // Process pending canister registrations on mount + when actor available
+  useEffect(() => {
+    async function processPending() {
+      const pending = getPendingRegisters();
+      if (pending.length === 0) return;
+      const remaining: PendingRegister[] = [];
+      for (const item of pending) {
+        const success = await syncUserToCanister(item);
+        if (!success) remaining.push(item);
+      }
+      savePendingRegisters(remaining);
+    }
+    // Try on mount after a short delay (actor may not be ready)
+    const t1 = setTimeout(processPending, 3000);
+    // Also try when actor becomes available
+    if (actor) processPending();
+    return () => clearTimeout(t1);
+  }, [actor]);
 
   const updateUser = useCallback(
     (updates: Partial<LocalUser>) => {
@@ -148,61 +208,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (found && found.passwordHash === hash) {
         localStorage.setItem("sce_current_user", JSON.stringify(found));
         setUser(found);
+        // Sync to canister on login (fire and forget) using direct actor
+        syncUserToCanister({
+          username: found.username,
+          email: found.email,
+          fullName: found.fullName,
+          joinDate: new Date(found.joinDate).getTime(),
+          referralCode: found.referralCode,
+          referredBy: found.referredBy ? [found.referredBy] : [],
+        }).catch(() => {});
         return;
       }
 
       // Try backend login for users registered from other devices
-      const currentActor = actorRef.current;
-      if (currentActor) {
-        try {
-          const hashBytes = hexToUint8Array(hash);
-          const backendUser = await (currentActor as any).loginUser(
-            usernameOrEmail,
-            hashBytes,
+      try {
+        const freshActor = await createActorWithConfig();
+        const hashBytes = hexToUint8Array(hash);
+        const backendUser = await (freshActor as any).loginUser(
+          usernameOrEmail,
+          hashBytes,
+        );
+        if (backendUser) {
+          const localUser: LocalUser = {
+            username: backendUser.username,
+            email: backendUser.email,
+            fullName: backendUser.fullName,
+            passwordHash: hash,
+            balance: Number(backendUser.balance) / 1_000_000,
+            totalEarned: Number(backendUser.totalEarned) / 1_000_000,
+            totalDeposited: Number(backendUser.totalDeposited) / 1_000_000,
+            referralCode: backendUser.referralCode,
+            joinDate: new Date(
+              Number(backendUser.joinDate) / 1_000_000,
+            ).toISOString(),
+            activePlan: null,
+            planActivatedAt: null,
+            referredBy:
+              backendUser.referredBy && backendUser.referredBy.length > 0
+                ? backendUser.referredBy[0]
+                : null,
+          };
+          const existingUsers = getUsers();
+          const existingIdx = existingUsers.findIndex(
+            (u) =>
+              u.username.toLowerCase() === localUser.username.toLowerCase(),
           );
-          if (backendUser) {
-            // Convert canister UserInfo to LocalUser
-            const localUser: LocalUser = {
-              username: backendUser.username,
-              email: backendUser.email,
-              fullName: backendUser.fullName,
-              passwordHash: hash,
-              balance: Number(backendUser.balance) / 1_000_000,
-              totalEarned: Number(backendUser.totalEarned) / 1_000_000,
-              totalDeposited: Number(backendUser.totalDeposited) / 1_000_000,
-              referralCode: backendUser.referralCode,
-              joinDate: new Date(
-                Number(backendUser.joinDate) / 1_000_000,
-              ).toISOString(),
-              activePlan: null,
-              planActivatedAt: null,
-              referredBy:
-                backendUser.referredBy && backendUser.referredBy.length > 0
-                  ? backendUser.referredBy[0]
-                  : null,
+          if (existingIdx === -1) {
+            existingUsers.push(localUser);
+          } else {
+            existingUsers[existingIdx] = {
+              ...existingUsers[existingIdx],
+              ...localUser,
             };
-            // Merge into localStorage so future logins work offline
-            const existingUsers = getUsers();
-            const existingIdx = existingUsers.findIndex(
-              (u) =>
-                u.username.toLowerCase() === localUser.username.toLowerCase(),
-            );
-            if (existingIdx === -1) {
-              existingUsers.push(localUser);
-            } else {
-              existingUsers[existingIdx] = {
-                ...existingUsers[existingIdx],
-                ...localUser,
-              };
-            }
-            saveUsers(existingUsers);
-            localStorage.setItem("sce_current_user", JSON.stringify(localUser));
-            setUser(localUser);
-            return;
           }
-        } catch {
-          // Backend login failed, fall through to error
+          saveUsers(existingUsers);
+          localStorage.setItem("sce_current_user", JSON.stringify(localUser));
+          setUser(localUser);
+          return;
         }
+      } catch {
+        // Backend login failed, fall through to error
       }
 
       if (!found) throw new Error("User not found. Please register first.");
@@ -261,21 +326,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("sce_current_user", JSON.stringify(newUser));
       setUser(newUser);
 
-      // Register in backend canister for cross-device visibility (public, no II needed)
-      const currentActor = actorRef.current;
-      if (currentActor) {
-        try {
-          await (currentActor as any).registerUserPublic(
-            username,
-            email,
-            fullName,
-            BigInt(Date.now()),
-            newUser.referralCode,
-            referralCode ? [referralCode] : [],
-          );
-        } catch {
-          // Silent fallback - localStorage registration still succeeded
-        }
+      const pendingItem: PendingRegister = {
+        username,
+        email,
+        fullName,
+        joinDate: Date.now(),
+        referralCode: newUser.referralCode,
+        referredBy: referralCode ? [referralCode] : [],
+      };
+
+      // DIRECT canister registration - no actor hook timing dependency
+      const success = await syncUserToCanister(pendingItem);
+      if (!success) {
+        // Fallback: queue for retry
+        const q = getPendingRegisters();
+        q.push(pendingItem);
+        savePendingRegisters(q);
+        // Retry after 5 seconds
+        setTimeout(async () => {
+          const retry = await syncUserToCanister(pendingItem);
+          if (retry) {
+            const q2 = getPendingRegisters();
+            savePendingRegisters(
+              q2.filter((i) => i.username !== pendingItem.username),
+            );
+          }
+        }, 5000);
       }
     } finally {
       setIsLoading(false);

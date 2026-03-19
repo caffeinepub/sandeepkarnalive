@@ -277,8 +277,159 @@ function CategorySection({
   );
 }
 
-function TradingHub() {
-  const [tradeCount] = useState(() => {
+// ===== NEW TRADING FEATURE COMPONENTS =====
+
+function useLivePrices() {
+  const [prices, setPrices] = useState<
+    Record<string, { price: number; change: number }>
+  >({});
+  useEffect(() => {
+    async function fetch24h() {
+      try {
+        const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+        const results = await Promise.all(
+          symbols.map((s) =>
+            fetch(
+              `https://api.binance.com/api/v3/ticker/24hr?symbol=${s}`,
+            ).then((r) => r.json()),
+          ),
+        );
+        const updated: Record<string, { price: number; change: number }> = {};
+        for (const r of results) {
+          updated[r.symbol] = {
+            price: Number.parseFloat(r.lastPrice),
+            change: Number.parseFloat(r.priceChangePercent),
+          };
+        }
+        setPrices(updated);
+      } catch {}
+    }
+    fetch24h();
+    const iv = setInterval(fetch24h, 10000);
+    return () => clearInterval(iv);
+  }, []);
+  return prices;
+}
+
+function LiveCoinCard({
+  coin,
+  symbol,
+  color,
+  glowColor,
+}: { coin: string; symbol: string; color: string; glowColor: string }) {
+  const prices = useLivePrices();
+  const [flash, setFlash] = useState<"up" | "down" | null>(null);
+  const [prevPrice, setPrevPrice] = useState(0);
+  const data = prices[symbol];
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setFlash/setPrevPrice are stable
+  useEffect(() => {
+    if (data && data.price !== prevPrice && prevPrice !== 0) {
+      setFlash(data.price > prevPrice ? "up" : "down");
+      const t = setTimeout(() => setFlash(null), 500);
+      setPrevPrice(data.price);
+      return () => clearTimeout(t);
+    }
+    if (data && prevPrice === 0) {
+      setPrevPrice(data.price);
+    }
+  }, [data?.price, prevPrice]);
+
+  const price = data?.price ?? 0;
+  const change = data?.change ?? 0;
+  const isUp = change >= 0;
+
+  const coinEmojis: Record<string, string> = { BTC: "₿", ETH: "Ξ", SOL: "◎" };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      data-ocid={`home.market.${coin.toLowerCase()}.card`}
+      className="rounded-2xl p-4 relative overflow-hidden transition-all hover:scale-[1.02]"
+      style={{
+        background: "rgba(255,255,255,0.03)",
+        backdropFilter: "blur(12px)",
+        border: `1px solid ${color}40`,
+        boxShadow:
+          flash === "up"
+            ? "0 0 20px rgba(0,255,136,0.3)"
+            : flash === "down"
+              ? "0 0 20px rgba(255,50,50,0.3)"
+              : `0 0 20px ${glowColor}`,
+        transition: "box-shadow 0.3s ease",
+      }}
+    >
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `radial-gradient(ellipse at top left, ${color}0a 0%, transparent 70%)`,
+        }}
+      />
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center font-black text-lg"
+            style={{
+              background: `${color}20`,
+              color,
+              border: `1px solid ${color}40`,
+            }}
+          >
+            {coinEmojis[coin] || coin[0]}
+          </div>
+          <div>
+            <div className="font-bold text-white text-sm">{coin}/USDT</div>
+            <div className="text-xs text-white/30">Crypto</div>
+          </div>
+        </div>
+        <div
+          className="text-xs font-bold px-2 py-1 rounded-full"
+          style={{
+            background: isUp ? "rgba(0,255,136,0.12)" : "rgba(255,50,50,0.12)",
+            color: isUp ? "#00FF88" : "#FF4444",
+            border: `1px solid ${isUp ? "rgba(0,255,136,0.25)" : "rgba(255,50,50,0.25)"}`,
+          }}
+        >
+          {isUp ? "▲" : "▼"} {Math.abs(change).toFixed(2)}%
+        </div>
+      </div>
+      <div
+        className="font-black text-2xl mb-3 transition-colors duration-300"
+        style={{
+          color:
+            flash === "up" ? "#00FF88" : flash === "down" ? "#FF4444" : "white",
+        }}
+      >
+        $
+        {price > 0
+          ? price.toLocaleString("en-US", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })
+          : "---"}
+      </div>
+      <Link to="/futures">
+        <button
+          type="button"
+          data-ocid={`home.market.${coin.toLowerCase()}.button`}
+          className="w-full py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90"
+          style={{
+            background: `${color}20`,
+            border: `1px solid ${color}40`,
+            color,
+          }}
+        >
+          Trade {coin} →
+        </button>
+      </Link>
+    </motion.div>
+  );
+}
+
+function LeverageTierCard() {
+  const tradeCount = (() => {
     try {
       return Number.parseInt(
         localStorage.getItem("skce_trade_volume") || "0",
@@ -287,344 +438,596 @@ function TradingHub() {
     } catch {
       return 0;
     }
-  });
-  const [btcPrice, setBtcPrice] = useState(0);
-  const [ethPrice, setEthPrice] = useState(0);
-  const [solPrice, setSolPrice] = useState(0);
-  const [activePair, setActivePair] = useState<
-    "BTC/USDT" | "ETH/USDT" | "SOL/USDT"
-  >("BTC/USDT");
-  const [selectedLev, setSelectedLev] = useState(20);
-
-  useEffect(() => {
-    async function fetchPrices() {
-      try {
-        const [b, e, s] = await Promise.all([
-          fetch(
-            "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
-          ).then((r) => r.json()),
-          fetch(
-            "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT",
-          ).then((r) => r.json()),
-          fetch(
-            "https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT",
-          ).then((r) => r.json()),
-        ]);
-        setBtcPrice(Number.parseFloat(b.price));
-        setEthPrice(Number.parseFloat(e.price));
-        setSolPrice(Number.parseFloat(s.price));
-      } catch {}
-    }
-    fetchPrices();
-    const iv = setInterval(fetchPrices, 10000);
-    return () => clearInterval(iv);
-  }, []);
+  })();
 
   const tiers = [
-    { label: "BEGINNER", leverage: "20x", min: 0, max: 10, color: "#FF8C00" },
-    { label: "PRO", leverage: "50x", min: 10, max: 50, color: "#FF3300" },
     {
-      label: "BEAST MODE 🔥",
+      label: "BEGINNER",
+      leverage: "20x",
+      min: 0,
+      max: 10,
+      color: "#FF8C00",
+      icon: "🔥",
+    },
+    {
+      label: "PRO",
+      leverage: "50x",
+      min: 10,
+      max: 50,
+      color: "#FF3300",
+      icon: "⚡",
+    },
+    {
+      label: "BEAST MODE",
       leverage: "100x",
       min: 50,
       max: 999,
       color: "#FFD700",
+      icon: "💀",
     },
   ];
   const currentTierIdx = tradeCount >= 50 ? 2 : tradeCount >= 10 ? 1 : 0;
-  const currentTier = tiers[currentTierIdx];
   const nextTier = tiers[currentTierIdx + 1];
+  const currentTier = tiers[currentTierIdx];
   const progress = nextTier
-    ? ((tradeCount - currentTier.min) / (nextTier.min - currentTier.min)) * 100
+    ? Math.min(
+        ((tradeCount - currentTier.min) / (nextTier.min - currentTier.min)) *
+          100,
+        100,
+      )
     : 100;
-  const tradesNeeded = nextTier ? nextTier.min - tradeCount : 0;
 
   return (
-    <section className="pt-28 pb-0 px-3 relative z-10">
-      <div className="max-w-5xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="rounded-2xl relative overflow-hidden"
-          style={{
-            background: "linear-gradient(135deg, #0D0F14 0%, #130800 100%)",
-            border: "1px solid rgba(255,100,0,0.35)",
-            boxShadow:
-              "0 0 60px rgba(255,80,0,0.18), 0 0 120px rgba(255,80,0,0.08), inset 0 0 80px rgba(255,60,0,0.04)",
-          }}
-        >
-          {/* Fire radial glow */}
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              background:
-                "radial-gradient(ellipse at 50% 0%, rgba(255,80,0,0.2) 0%, transparent 65%)",
-            }}
-          />
-
-          {/* Animated top glow line */}
-          <div
-            style={{
-              height: 2,
-              background:
-                "linear-gradient(90deg, transparent 0%, #FF6B00 40%, #FFD700 60%, transparent 100%)",
-              opacity: 0.7,
-            }}
-          />
-
-          <div className="p-4 relative z-10">
-            {/* Header row */}
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: "50%",
-                    background: "rgba(255,107,0,0.2)",
-                    border: "1px solid rgba(255,107,0,0.5)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Zap className="w-4 h-4" style={{ color: "#FF6B00" }} />
-                </div>
-                <div>
-                  <div className="font-black text-white text-sm tracking-widest uppercase">
-                    ⚡ BEAST TRADING HUB
-                  </div>
-                  <div
-                    style={{
-                      color: "rgba(255,107,0,0.8)",
-                      fontSize: 10,
-                      fontWeight: 600,
-                    }}
-                  >
-                    REAL MONEY · REAL TRADING
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className="text-xs font-bold px-2 py-0.5 rounded-full animate-pulse"
-                  style={{
-                    background: "rgba(14,203,129,0.15)",
-                    border: "1px solid rgba(14,203,129,0.4)",
-                    color: "#0ECB81",
-                  }}
-                >
-                  ● LIVE
-                </span>
-              </div>
-            </div>
-
-            {/* Live Prices Row */}
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {[
-                {
-                  label: "BTC/USDT",
-                  price: btcPrice,
-                  pair: "BTC/USDT" as const,
-                },
-                {
-                  label: "ETH/USDT",
-                  price: ethPrice,
-                  pair: "ETH/USDT" as const,
-                },
-                {
-                  label: "SOL/USDT",
-                  price: solPrice,
-                  pair: "SOL/USDT" as const,
-                },
-              ].map((item) => (
-                <button
-                  key={item.pair}
-                  type="button"
-                  onClick={() => setActivePair(item.pair)}
-                  className="flex flex-col items-center py-2 px-1 rounded-xl transition-all"
-                  style={{
-                    background:
-                      activePair === item.pair
-                        ? "rgba(255,107,0,0.15)"
-                        : "rgba(255,255,255,0.04)",
-                    border:
-                      activePair === item.pair
-                        ? "1px solid rgba(255,107,0,0.5)"
-                        : "1px solid rgba(255,255,255,0.08)",
-                    boxShadow:
-                      activePair === item.pair
-                        ? "0 0 12px rgba(255,107,0,0.2)"
-                        : "none",
-                  }}
-                >
-                  <span
-                    style={{ color: "#8A8F98", fontSize: 9, fontWeight: 600 }}
-                  >
-                    {item.label}
-                  </span>
-                  <span
-                    style={{
-                      color: activePair === item.pair ? "#FFD700" : "#F5F6F8",
-                      fontSize: 14,
-                      fontWeight: 800,
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    {item.price > 0
-                      ? item.price > 999
-                        ? `$${(item.price).toLocaleString("en-US", { maximumFractionDigits: 0 })}`
-                        : `$${item.price.toFixed(2)}`
-                      : "---"}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {/* Leverage Tier */}
-            <div
-              className="flex items-center gap-3 mb-3 p-3 rounded-xl"
-              style={{
-                background: "rgba(0,0,0,0.3)",
-                border: "1px solid rgba(255,255,255,0.06)",
-              }}
-            >
-              <div>
-                <div
-                  className="font-black text-3xl tracking-tight"
-                  style={{
-                    color: currentTier.color,
-                    textShadow: `0 0 20px ${currentTier.color}80`,
-                  }}
-                >
-                  {currentTier.leverage}
-                </div>
-                <div
-                  className="text-xs font-bold"
-                  style={{ color: currentTier.color }}
-                >
-                  {currentTier.label}
-                </div>
-                <div className="text-white/40 text-xs">YOUR LEVERAGE</div>
-              </div>
-              <div className="flex-1">
-                {nextTier && (
-                  <>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-white/50">{tradeCount} trades</span>
-                      <span style={{ color: nextTier.color }}>
-                        {tradesNeeded} → {nextTier.leverage}
-                      </span>
-                    </div>
-                    <div
-                      className="h-2 rounded-full overflow-hidden"
-                      style={{ background: "rgba(255,255,255,0.08)" }}
-                    >
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${Math.min(progress, 100)}%`,
-                          background: `linear-gradient(90deg, ${currentTier.color}, ${nextTier.color})`,
-                          boxShadow: `0 0 8px ${nextTier.color}60`,
-                        }}
-                      />
-                    </div>
-                  </>
-                )}
-                <div className="flex gap-2 mt-2">
-                  {tiers.map((tier, i) => (
-                    <div
-                      key={tier.label}
-                      className="flex-1 text-center py-1 rounded-lg"
-                      style={{
-                        background:
-                          i <= currentTierIdx
-                            ? "rgba(255,107,0,0.15)"
-                            : "rgba(255,255,255,0.04)",
-                        border: `1px solid ${i <= currentTierIdx ? "rgba(255,107,0,0.4)" : "rgba(255,255,255,0.06)"}`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          color: i <= currentTierIdx ? tier.color : "#6A6E78",
-                          fontSize: 11,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {tier.leverage}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Leverage selector */}
-            <div className="flex items-center gap-2 mb-3">
-              <span style={{ color: "#8A8F98", fontSize: 11 }}>
-                Quick Leverage:
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      data-ocid="home.leverage.card"
+      className="rounded-2xl relative overflow-hidden p-5"
+      style={{
+        background:
+          "linear-gradient(135deg, #0D0800 0%, #180A00 50%, #0D0000 100%)",
+        border: "1px solid rgba(255,120,0,0.35)",
+        boxShadow:
+          "0 0 40px rgba(255,80,0,0.12), inset 0 0 60px rgba(255,50,0,0.03)",
+      }}
+    >
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse at 50% 0%, rgba(255,80,0,0.15) 0%, transparent 60%)",
+        }}
+      />
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Flame className="w-5 h-5" style={{ color: "#FF6B00" }} />
+              <span className="font-black text-white text-base tracking-widest uppercase">
+                Leverage System
               </span>
-              <div className="flex gap-1 flex-1">
-                {[10, 20, 50, 75, 100].map((lv) => (
-                  <button
-                    key={lv}
-                    type="button"
-                    onClick={() => setSelectedLev(lv)}
-                    className="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all"
-                    style={{
-                      background:
-                        selectedLev === lv
-                          ? "rgba(255,107,0,0.25)"
-                          : "rgba(255,255,255,0.06)",
-                      border:
-                        selectedLev === lv
-                          ? "1px solid rgba(255,107,0,0.6)"
-                          : "1px solid rgba(255,255,255,0.08)",
-                      color: selectedLev === lv ? "#FF6B00" : "#8A8F98",
-                      boxShadow:
-                        selectedLev === lv
-                          ? "0 0 8px rgba(255,107,0,0.3)"
-                          : "none",
-                    }}
-                  >
-                    {lv}x
-                  </button>
-                ))}
-              </div>
             </div>
+            <p className="text-xs text-white/40">
+              Unlock higher leverage as you trade more
+            </p>
+          </div>
+          <div
+            className="px-3 py-1.5 rounded-xl font-black text-lg"
+            style={{
+              background: `${currentTier.color}20`,
+              border: `1px solid ${currentTier.color}40`,
+              color: currentTier.color,
+            }}
+          >
+            {currentTier.icon} {currentTier.leverage}
+          </div>
+        </div>
 
-            {/* CTA Button */}
-            <Link to="/futures">
-              <motion.button
-                type="button"
-                data-ocid="home.trade_now.primary_button"
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                className="w-full py-4 rounded-xl font-black text-base tracking-wider flex items-center justify-center gap-2 relative overflow-hidden"
+        {/* Tier progression */}
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          {tiers.map((tier, i) => {
+            const isActive = i === currentTierIdx;
+            const isUnlocked = i <= currentTierIdx;
+            return (
+              <div
+                key={tier.label}
+                className="rounded-xl p-3 text-center transition-all"
                 style={{
-                  background: "linear-gradient(135deg, #FF6B00, #FF3300)",
-                  boxShadow:
-                    "0 0 30px rgba(255,80,0,0.5), 0 4px 20px rgba(255,50,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)",
-                  color: "#fff",
-                  textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+                  background: isActive
+                    ? `${tier.color}18`
+                    : isUnlocked
+                      ? `${tier.color}0a`
+                      : "rgba(255,255,255,0.02)",
+                  border: `1px solid ${isActive ? `${tier.color}60` : isUnlocked ? `${tier.color}30` : "rgba(255,255,255,0.06)"}`,
+                  boxShadow: isActive ? `0 0 20px ${tier.color}20` : "none",
                 }}
               >
+                <div className="text-lg mb-0.5">{tier.icon}</div>
                 <div
-                  className="absolute inset-0"
+                  className="font-black text-lg"
                   style={{
-                    background:
-                      "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)",
-                    animation: "shimmer 2s infinite",
+                    color: isActive
+                      ? tier.color
+                      : isUnlocked
+                        ? `${tier.color}aa`
+                        : "rgba(255,255,255,0.2)",
                   }}
-                />
-                <Zap className="w-5 h-5" />
-                TRADE NOW · {selectedLev}x LEVERAGE · LIVE {activePair}
-                <ArrowRight className="w-5 h-5" />
-              </motion.button>
-            </Link>
+                >
+                  {tier.leverage}
+                </div>
+                <div
+                  className="text-[10px] font-bold"
+                  style={{
+                    color: isActive ? "white" : "rgba(255,255,255,0.3)",
+                  }}
+                >
+                  {tier.label}
+                </div>
+                {i > 0 && (
+                  <div
+                    className="text-[9px] mt-1"
+                    style={{ color: "rgba(255,255,255,0.25)" }}
+                  >
+                    {isUnlocked ? "✓ Unlocked" : `${tiers[i].min} trades`}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Progress bar */}
+        {nextTier && (
+          <div className="mb-4">
+            <div className="flex justify-between text-xs mb-1.5">
+              <span style={{ color: "rgba(255,255,255,0.4)" }}>
+                {tradeCount} trades
+              </span>
+              <span style={{ color: currentTier.color }}>
+                {nextTier.min - tradeCount} trades to {nextTier.leverage}
+              </span>
+            </div>
+            <div
+              className="h-2 rounded-full overflow-hidden"
+              style={{ background: "rgba(255,255,255,0.06)" }}
+            >
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 1, ease: "easeOut" }}
+                className="h-full rounded-full"
+                style={{
+                  background: `linear-gradient(90deg, ${currentTier.color}, ${currentTier.color}aa)`,
+                  boxShadow: `0 0 8px ${currentTier.color}60`,
+                }}
+              />
+            </div>
           </div>
+        )}
+
+        <Link to="/futures">
+          <button
+            type="button"
+            data-ocid="home.leverage.primary_button"
+            className="w-full py-3 rounded-xl font-black text-sm tracking-wider transition-all hover:opacity-90"
+            style={{
+              background: "linear-gradient(90deg, #FF6B00, #FF3300)",
+              boxShadow: "0 0 20px rgba(255,80,0,0.3)",
+              color: "white",
+            }}
+          >
+            🚀 START TRADING — EARN LEVERAGE
+          </button>
+        </Link>
+      </div>
+    </motion.div>
+  );
+}
+
+function FuturesTradingCard() {
+  const prices = useLivePrices();
+  const btc = prices.BTCUSDT;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      data-ocid="home.futures.card"
+      className="rounded-2xl relative overflow-hidden p-5"
+      style={{
+        background: "linear-gradient(135deg, #0A0500 0%, #150800 100%)",
+        border: "1px solid rgba(255,100,0,0.4)",
+        boxShadow: "0 0 50px rgba(255,80,0,0.15)",
+      }}
+    >
+      <div
+        className="absolute top-0 right-0 w-48 h-48 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(circle at top right, rgba(255,80,0,0.15) 0%, transparent 60%)",
+        }}
+      />
+      <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl">⚡</span>
+            <h3 className="font-black text-white text-xl tracking-wide">
+              Futures Trading
+            </h3>
+          </div>
+          <p className="text-white/40 text-sm mb-3">
+            Trade with up to 100x leverage. Long or Short any market.
+          </p>
+          {btc && (
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-xs text-white/30">BTC/USDT</span>
+              <span className="font-black text-white">
+                $
+                {btc.price.toLocaleString("en-US", {
+                  minimumFractionDigits: 2,
+                })}
+              </span>
+              <span
+                className={`text-xs font-bold ${btc.change >= 0 ? "text-[#00FF88]" : "text-red-400"}`}
+              >
+                {btc.change >= 0 ? "▲" : "▼"} {Math.abs(btc.change).toFixed(2)}%
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-3 w-full sm:w-auto">
+          <Link to="/futures" className="flex-1 sm:flex-none">
+            <button
+              type="button"
+              data-ocid="home.futures.long_button"
+              className="w-full sm:w-28 py-3 rounded-xl font-black text-sm transition-all hover:opacity-90"
+              style={{
+                background: "linear-gradient(135deg, #00AA44, #00FF66)",
+                color: "#000",
+                boxShadow: "0 0 16px rgba(0,255,100,0.3)",
+              }}
+            >
+              📈 LONG
+            </button>
+          </Link>
+          <Link to="/futures" className="flex-1 sm:flex-none">
+            <button
+              type="button"
+              data-ocid="home.futures.short_button"
+              className="w-full sm:w-28 py-3 rounded-xl font-black text-sm transition-all hover:opacity-90"
+              style={{
+                background: "linear-gradient(135deg, #AA0000, #FF3333)",
+                color: "white",
+                boxShadow: "0 0 16px rgba(255,0,0,0.3)",
+              }}
+            >
+              📉 SHORT
+            </button>
+          </Link>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function SpotTradingCard() {
+  const prices = useLivePrices();
+  const btc = prices.BTCUSDT;
+  const eth = prices.ETHUSDT;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.1 }}
+      data-ocid="home.spot.card"
+      className="rounded-2xl relative overflow-hidden p-5"
+      style={{
+        background: "linear-gradient(135deg, #00050A 0%, #000A15 100%)",
+        border: "1px solid rgba(0,240,255,0.3)",
+        boxShadow: "0 0 40px rgba(0,240,255,0.08)",
+      }}
+    >
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse at top left, rgba(0,240,255,0.08) 0%, transparent 60%)",
+        }}
+      />
+      <div className="relative z-10">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-2xl">📊</span>
+          <h3 className="font-black text-white text-lg">Spot Trading</h3>
+        </div>
+        <p className="text-white/40 text-xs mb-3">
+          Buy and sell crypto at real-time market prices
+        </p>
+        <div className="space-y-2 mb-4">
+          {[
+            { label: "BTC/USDT", data: btc },
+            { label: "ETH/USDT", data: eth },
+          ].map(({ label, data }) => (
+            <div
+              key={label}
+              className="flex items-center justify-between text-xs"
+            >
+              <span className="text-white/40">{label}</span>
+              <span className="font-bold text-white">
+                {data
+                  ? `$${data.price.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+                  : "---"}
+              </span>
+            </div>
+          ))}
+        </div>
+        <Link to="/trading">
+          <button
+            type="button"
+            data-ocid="home.spot.primary_button"
+            className="w-full py-2.5 rounded-xl font-bold text-sm transition-all hover:opacity-90"
+            style={{
+              background: "rgba(0,240,255,0.12)",
+              border: "1px solid rgba(0,240,255,0.35)",
+              color: "#00F0FF",
+            }}
+          >
+            Trade Now →
+          </button>
+        </Link>
+      </div>
+    </motion.div>
+  );
+}
+
+function P2PExchangeCard() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.2 }}
+      data-ocid="home.p2p.card"
+      className="rounded-2xl relative overflow-hidden p-5"
+      style={{
+        background: "linear-gradient(135deg, #000A05 0%, #001408 100%)",
+        border: "1px solid rgba(0,255,136,0.25)",
+        boxShadow: "0 0 40px rgba(0,255,136,0.06)",
+      }}
+    >
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse at bottom right, rgba(0,255,136,0.07) 0%, transparent 60%)",
+        }}
+      />
+      <div className="relative z-10">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-2xl">🤝</span>
+          <h3 className="font-black text-white text-lg">P2P Exchange</h3>
+        </div>
+        <p className="text-white/40 text-xs mb-3">
+          Buy &amp; Sell crypto directly with other users. Escrow protected.
+        </p>
+        <div className="flex gap-2 mb-4">
+          {["BUY", "SELL"].map((label) => (
+            <span
+              key={label}
+              className="px-3 py-1 rounded-full text-xs font-bold"
+              style={{
+                background:
+                  label === "BUY"
+                    ? "rgba(0,255,136,0.12)"
+                    : "rgba(255,50,50,0.12)",
+                border: `1px solid ${label === "BUY" ? "rgba(0,255,136,0.3)" : "rgba(255,50,50,0.3)"}`,
+                color: label === "BUY" ? "#00FF88" : "#FF4444",
+              }}
+            >
+              {label}
+            </span>
+          ))}
+          <span
+            className="px-3 py-1 rounded-full text-xs font-bold"
+            style={{
+              background: "rgba(255,215,0,0.1)",
+              border: "1px solid rgba(255,215,0,0.2)",
+              color: "#FFD700",
+            }}
+          >
+            🔒 Escrow
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {["UPI", "Bank Transfer", "eSewa", "JazzCash"].map((m) => (
+            <span
+              key={m}
+              className="text-[10px] px-2 py-0.5 rounded"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                color: "rgba(255,255,255,0.4)",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              {m}
+            </span>
+          ))}
+        </div>
+        <Link to="/p2p">
+          <button
+            type="button"
+            data-ocid="home.p2p.primary_button"
+            className="w-full py-2.5 rounded-xl font-bold text-sm transition-all hover:opacity-90"
+            style={{
+              background: "rgba(0,255,136,0.1)",
+              border: "1px solid rgba(0,255,136,0.3)",
+              color: "#00FF88",
+            }}
+          >
+            Go to P2P →
+          </button>
+        </Link>
+      </div>
+    </motion.div>
+  );
+}
+
+function AllPlatformFeatures() {
+  const allFeatures = [
+    {
+      icon: TrendingUp,
+      label: "Futures Trading",
+      desc: "100x leverage, Long & Short",
+      link: "/futures",
+      color: "#FF6B00",
+    },
+    {
+      icon: BarChart2,
+      label: "Spot Trading",
+      desc: "Buy & sell at market price",
+      link: "/trading",
+      color: "#00F0FF",
+    },
+    {
+      icon: ArrowLeftRight,
+      label: "P2P Exchange",
+      desc: "Peer-to-peer with escrow",
+      link: "/p2p",
+      color: "#00FF88",
+    },
+    {
+      icon: Wallet,
+      label: "My Wallet",
+      desc: "Deposit, withdraw, manage",
+      link: "/wallet",
+      color: "#FFD700",
+    },
+    {
+      icon: ShieldCheck,
+      label: "KYC Verify",
+      desc: "Verify for full access",
+      link: "/kyc",
+      color: "#9945FF",
+    },
+    {
+      icon: Zap,
+      label: "Earn",
+      desc: "500+ earning methods",
+      link: "/earn",
+      color: "#FFD700",
+    },
+    {
+      icon: RefreshCw,
+      label: "Convert",
+      desc: "Instant crypto swap",
+      link: "/convert",
+      color: "#00F0FF",
+    },
+    {
+      icon: Coins,
+      label: "TradeFi",
+      desc: "Staking, savings & loans",
+      link: "/tradefi",
+      color: "#FF6B00",
+    },
+    {
+      icon: Activity,
+      label: "Positions",
+      desc: "Live PNL tracking",
+      link: "/positions",
+      color: "#00FF88",
+    },
+    {
+      icon: TrendingUp,
+      label: "Signals",
+      desc: "Pro trading signals",
+      link: "/signals",
+      color: "#A855F7",
+    },
+    {
+      icon: Award,
+      label: "Leaderboard",
+      desc: "Top earners ranking",
+      link: "/leaderboard",
+      color: "#FFD700",
+    },
+    {
+      icon: Rocket,
+      label: "Blog",
+      desc: "Crypto news & tips",
+      link: "/blog",
+      color: "#00F0FF",
+    },
+  ];
+
+  return (
+    <section className="py-10 px-4 relative z-10">
+      <div className="max-w-5xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="text-center mb-8"
+        >
+          <span
+            className="inline-block mb-3 text-xs px-3 py-1 rounded-full font-bold tracking-widest uppercase"
+            style={{
+              background: "rgba(0,240,255,0.08)",
+              border: "1px solid rgba(0,240,255,0.2)",
+              color: "#00F0FF",
+            }}
+          >
+            Full Platform
+          </span>
+          <h2 className="font-display text-3xl font-black text-white mb-2">
+            All <span className="gold-gradient">Features</span>
+          </h2>
+          <p className="text-white/40 text-sm">
+            Everything you need in one powerful platform
+          </p>
         </motion.div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {allFeatures.map((feat, idx) => {
+            const Icon = feat.icon;
+            return (
+              <motion.div
+                key={feat.label}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.04 }}
+              >
+                <Link to={feat.link}>
+                  <div
+                    data-ocid={`home.features.${feat.label.toLowerCase().replace(/\s+/g, "_")}.card`}
+                    className="rounded-xl p-4 h-full cursor-pointer hover:scale-[1.04] transition-all group"
+                    style={{
+                      background: `${feat.color}06`,
+                      border: `1px solid ${feat.color}25`,
+                    }}
+                  >
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5 transition-all group-hover:scale-110"
+                      style={{
+                        background: `${feat.color}15`,
+                        boxShadow: `0 0 12px ${feat.color}20`,
+                      }}
+                    >
+                      <Icon className="w-4 h-4" style={{ color: feat.color }} />
+                    </div>
+                    <div className="font-bold text-white text-xs mb-0.5">
+                      {feat.label}
+                    </div>
+                    <div className="text-[11px] text-white/35 leading-tight">
+                      {feat.desc}
+                    </div>
+                  </div>
+                </Link>
+              </motion.div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
@@ -683,8 +1086,69 @@ export function Home() {
         </div>
       </div>
 
-      {/* Beast Trading Hub */}
-      <TradingHub />
+      {/* ===== NEW TRADING SECTIONS ===== */}
+
+      {/* Section A: Live Market Prices */}
+      <section className="pt-28 pb-0 px-3 relative z-10">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Activity className="w-5 h-5" style={{ color: "#00F0FF" }} />
+              <h2 className="font-display font-black text-white text-lg tracking-wider uppercase">
+                Live Markets
+              </h2>
+              <span className="w-2 h-2 rounded-full bg-[#00FF88] animate-pulse" />
+            </div>
+            <Link to="/futures">
+              <span className="text-xs text-white/40 hover:text-white/70 transition-colors flex items-center gap-1">
+                Trade All <ChevronRight className="w-3 h-3" />
+              </span>
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <LiveCoinCard
+              coin="BTC"
+              symbol="BTCUSDT"
+              color="#FF8C00"
+              glowColor="rgba(255,140,0,0.3)"
+            />
+            <LiveCoinCard
+              coin="ETH"
+              symbol="ETHUSDT"
+              color="#627EEA"
+              glowColor="rgba(98,126,234,0.3)"
+            />
+            <LiveCoinCard
+              coin="SOL"
+              symbol="SOLUSDT"
+              color="#9945FF"
+              glowColor="rgba(153,69,255,0.3)"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Section B: Leverage Trading System */}
+      <section className="pt-5 pb-0 px-3 relative z-10">
+        <div className="max-w-5xl mx-auto">
+          <LeverageTierCard />
+        </div>
+      </section>
+
+      {/* Section C: Futures Trading */}
+      <section className="pt-5 pb-0 px-3 relative z-10">
+        <div className="max-w-5xl mx-auto">
+          <FuturesTradingCard />
+        </div>
+      </section>
+
+      {/* Section D + E: Spot & P2P side by side */}
+      <section className="pt-5 pb-0 px-3 relative z-10">
+        <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <SpotTradingCard />
+          <P2PExchangeCard />
+        </div>
+      </section>
 
       {/* Ads */}
       {ads.length > 0 && (
@@ -1351,102 +1815,8 @@ export function Home() {
           )}
         </div>
       </section>
-      {/* Platform Features */}
-      <section className="py-8 px-4 relative z-10">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-6">
-            <h2 className="font-display text-2xl font-bold text-white mb-1">
-              All Platform <span className="gold-gradient">Features</span>
-            </h2>
-            <p className="text-white/40 text-sm">
-              Everything you need in one place
-            </p>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {[
-              {
-                icon: TrendingUp,
-                label: "Futures Trading",
-                desc: "Trade with up to 100x leverage",
-                link: "/futures",
-                color: "#FF6B00",
-              },
-              {
-                icon: BarChart2,
-                label: "Spot Trading",
-                desc: "Buy & sell crypto instantly",
-                link: "/trading",
-                color: "#00F0FF",
-              },
-              {
-                icon: ArrowLeftRight,
-                label: "P2P Exchange",
-                desc: "Trade peer-to-peer with escrow",
-                link: "/p2p",
-                color: "#00FF88",
-              },
-              {
-                icon: Wallet,
-                label: "My Wallet",
-                desc: "Deposit, withdraw, manage funds",
-                link: "/wallet",
-                color: "#FFD700",
-              },
-              {
-                icon: ShieldCheck,
-                label: "KYC Verify",
-                desc: "Verify identity for full access",
-                link: "/kyc",
-                color: "#00FF88",
-              },
-              {
-                icon: Zap,
-                label: "Earn",
-                desc: "500+ earning methods",
-                link: "/earn",
-                color: "#FFD700",
-              },
-            ].map((feat, idx) => (
-              <motion.div
-                key={feat.label}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: idx * 0.07 }}
-              >
-                <Link to={feat.link}>
-                  <div
-                    className="rounded-2xl p-4 h-full cursor-pointer hover:scale-[1.03] transition-transform"
-                    style={{
-                      background: `${feat.color}08`,
-                      border: `1px solid ${feat.color}30`,
-                      boxShadow: `0 0 16px ${feat.color}0a`,
-                    }}
-                    data-ocid={`home.${feat.label.toLowerCase().replace(/\s+/g, "_")}.card`}
-                  >
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
-                      style={{
-                        background: `${feat.color}15`,
-                        boxShadow: `0 0 12px ${feat.color}25`,
-                      }}
-                    >
-                      <feat.icon
-                        className="w-5 h-5"
-                        style={{ color: feat.color }}
-                      />
-                    </div>
-                    <div className="font-bold text-white text-sm mb-1">
-                      {feat.label}
-                    </div>
-                    <div className="text-xs text-white/40">{feat.desc}</div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* All Platform Features - Comprehensive Grid */}
+      <AllPlatformFeatures />
 
       {/* Ways to Earn */}
       <section
