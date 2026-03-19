@@ -283,7 +283,7 @@ export function Wallet() {
     try {
       if (actor) {
         try {
-          await actor.submitDepositRequest(
+          await (actor as any).submitDepositPublic(
             user!.username,
             depositForm.currency,
             depositForm.amount,
@@ -339,7 +339,7 @@ export function Wallet() {
     try {
       if (actor) {
         try {
-          await actor.submitWithdrawalRequest(
+          await (actor as any).submitWithdrawalPublic(
             user!.username,
             BigInt(Math.round(amt * 1000)),
             withdrawForm.currency,

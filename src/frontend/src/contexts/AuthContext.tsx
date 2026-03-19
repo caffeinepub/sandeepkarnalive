@@ -261,16 +261,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("sce_current_user", JSON.stringify(newUser));
       setUser(newUser);
 
-      // Also register in backend canister for cross-device visibility
+      // Register in backend canister for cross-device visibility (public, no II needed)
       const currentActor = actorRef.current;
       if (currentActor) {
         try {
-          const hashBytes = hexToUint8Array(hash);
-          await (currentActor as any).registerUserFull(
+          await (currentActor as any).registerUserPublic(
             username,
-            hashBytes,
             email,
             fullName,
+            BigInt(Date.now()),
             newUser.referralCode,
             referralCode ? [referralCode] : [],
           );

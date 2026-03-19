@@ -676,9 +676,9 @@ export function AdminDashboard() {
       if (!actor) return;
       try {
         const [users, deps, withs] = await Promise.all([
-          (actor as any).getAllUsers(),
-          (actor as any).getAllDeposits(),
-          (actor as any).getAllWithdrawals(),
+          (actor as any).getAllUsersPublic(),
+          (actor as any).getAllDepositsPublic(),
+          (actor as any).getAllWithdrawalsPublic(),
         ]);
         if (Array.isArray(users)) setCanisterUsers(users);
         if (Array.isArray(deps)) {
@@ -2247,8 +2247,9 @@ export function AdminDashboard() {
                             className="bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 h-8 text-xs"
                             onClick={async () => {
                               try {
-                                await (actor as any).approveDeposit(
+                                await (actor as any).approveDepositAdmin(
                                   BigInt(d.id),
+                                  "Sandeep@321",
                                 );
                                 toast.success(
                                   `Deposit approved for ${d.username}`,
@@ -2272,8 +2273,9 @@ export function AdminDashboard() {
                             className="text-red-400 border border-red-500/30 hover:bg-red-500/10 h-8 text-xs"
                             onClick={async () => {
                               try {
-                                await (actor as any).rejectDeposit(
+                                await (actor as any).rejectDepositAdmin(
                                   BigInt(d.id),
+                                  "Sandeep@321",
                                 );
                                 toast.error(
                                   `Deposit rejected for ${d.username}`,
@@ -2339,8 +2341,9 @@ export function AdminDashboard() {
                             className="bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 h-8 text-xs"
                             onClick={async () => {
                               try {
-                                await (actor as any).approveWithdrawal(
+                                await (actor as any).approveWithdrawalAdmin(
                                   BigInt(w.id),
+                                  "Sandeep@321",
                                 );
                                 toast.success(
                                   `Withdrawal approved for ${w.username}`,
@@ -2364,8 +2367,9 @@ export function AdminDashboard() {
                             className="text-red-400 border border-red-500/30 hover:bg-red-500/10 h-8 text-xs"
                             onClick={async () => {
                               try {
-                                await (actor as any).rejectWithdrawal(
+                                await (actor as any).rejectWithdrawalAdmin(
                                   BigInt(w.id),
+                                  "Sandeep@321",
                                 );
                                 toast.error(
                                   `Withdrawal rejected for ${w.username}`,
@@ -2531,7 +2535,7 @@ export function AdminDashboard() {
                                           // Refresh canister users
                                           const result = await (
                                             actor as any
-                                          ).getAllUsers();
+                                          ).getAllUsersPublic();
                                           if (Array.isArray(result))
                                             setCanisterUsers(result);
                                         } catch {

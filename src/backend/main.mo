@@ -177,6 +177,10 @@ actor {
 
   let userProfiles = Map.empty<Principal, UserProfile>();
 
+  // Anonymous user storage (cross-device, no II needed)
+  let usernameUsers = Map.empty<Text, UserRegistrationData>();
+  let usernameBalances = Map.empty<Text, Nat>();
+
   // Authorization System
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
@@ -1124,4 +1128,142 @@ actor {
       transform,
     );
   };
+
+  // ============================================================
+  // PUBLIC (ANONYMOUS-FRIENDLY) FUNCTIONS FOR CROSS-DEVICE SYNC
+  // ============================================================
+
+  public shared func registerUserPublic(
+    username : Text,
+    email : Text,
+    fullName : Text,
+    joinDate : Int,
+    referralCode : Text,
+    referredBy : ?Text,
+  ) : async () {
+    let takenInAnon = usernameUsers.values().toArray().any(
+      func(d : UserRegistrationData) : Bool { d.username == username }
+    );
+    if (takenInAnon) { Runtime.trap("Username already taken") };
+    let takenInPrincipal = userRegistrationData.values().toArray().any(
+      func(d : UserRegistrationData) : Bool { d.username == username }
+    );
+    if (takenInPrincipal) { Runtime.trap("Username already taken") };
+    let rd : UserRegistrationData = {
+      principalId = "anon"; username; email; fullName; joinDate; referralCode; referredBy;
+    };
+    usernameUsers.add(username, rd);
+    usernameBalances.add(username, 0);
+    switch (referredBy) {
+      case (null) {};
+      case (?refCode) {
+        let referrerEntry = usernameUsers.values().toArray().find(
+          func(d : UserRegistrationData) : Bool { d.referralCode == refCode }
+        );
+        switch (referrerEntry) {
+          case (null) {};
+          case (?ref) {
+            let cur = switch (usernameBalances.get(ref.username)) { case (null) { 0 }; case (?b) { b } };
+            usernameBalances.add(ref.username, cur + 1000);
+          };
+        };
+      };
+    };
+  };
+
+  public query func getAllUsersPublic() : async [UserInfo] {
+    usernameUsers.values().toArray().map(func(rd : UserRegistrationData) : UserInfo {
+      let bal = switch (usernameBalances.get(rd.username)) { case (null) { 0 }; case (?b) { b } };
+      { principalId = rd.principalId; username = rd.username; email = rd.email;
+        fullName = rd.fullName; joinDate = rd.joinDate; referralCode = rd.referralCode;
+        referredBy = rd.referredBy; balance = bal; totalEarned = 0; totalDeposited = 0; }
+    })
+  };
+
+  public shared func submitDepositPublic(username : Text, currency : Text, amount : Text, txHash : Text) : async () {
+    let request : DepositRequest = {
+      id = nextDepositId; userId = Principal.fromText("2vxsx-fae");
+      username; currency; amount; txHash; status = #pending;
+      createdAt = Time.now(); reviewedAt = 0;
+    };
+    depositRequests.add(nextDepositId, request);
+    nextDepositId += 1;
+  };
+
+  public shared func submitWithdrawalPublic(username : Text, amount : Nat, currency : Text, walletAddress : Text) : async () {
+    let request : WithdrawalRequest = {
+      id = nextWithdrawalId; userId = Principal.fromText("2vxsx-fae");
+      username; amount; currency; walletAddress; status = #pending;
+      createdAt = Time.now(); reviewedAt = 0;
+    };
+    withdrawalRequests.add(nextWithdrawalId, request);
+    nextWithdrawalId += 1;
+  };
+
+  public query func getAllDepositsPublic() : async [DepositRequest] {
+    depositRequests.values().toArray()
+  };
+
+  public query func getAllWithdrawalsPublic() : async [WithdrawalRequest] {
+    withdrawalRequests.values().toArray()
+  };
+
+  public shared func approveDepositAdmin(id : Nat, adminPw : Text) : async () {
+    if (adminPw != "Sandeep@321") { Runtime.trap("Invalid admin credentials") };
+    switch (depositRequests.get(id)) {
+      case (null) { Runtime.trap("Deposit request not found") };
+      case (?request) {
+        if (not (request.status == #pending)) { Runtime.trap("Already processed") };
+        depositRequests.add(id, { request with status = #approved; reviewedAt = Time.now() });
+        let amountNat = switch (Nat.fromText(request.amount)) { case (null) { 0 }; case (?n) { n } };
+        let cur = switch (usernameBalances.get(request.username)) { case (null) { 0 }; case (?b) { b } };
+        usernameBalances.add(request.username, cur + amountNat);
+        switch (userAccounts.get(request.userId)) {
+          case (null) {};
+          case (?account) {
+            userAccounts.add(request.userId, { account with balance = account.balance + amountNat; totalDeposited = account.totalDeposited + amountNat });
+          };
+        };
+      };
+    };
+  };
+
+  public shared func rejectDepositAdmin(id : Nat, adminPw : Text) : async () {
+    if (adminPw != "Sandeep@321") { Runtime.trap("Invalid admin credentials") };
+    switch (depositRequests.get(id)) {
+      case (null) { Runtime.trap("Deposit request not found") };
+      case (?request) {
+        depositRequests.add(id, { request with status = #rejected; reviewedAt = Time.now() });
+      };
+    };
+  };
+
+  public shared func approveWithdrawalAdmin(id : Nat, adminPw : Text) : async () {
+    if (adminPw != "Sandeep@321") { Runtime.trap("Invalid admin credentials") };
+    switch (withdrawalRequests.get(id)) {
+      case (null) { Runtime.trap("Withdrawal request not found") };
+      case (?request) {
+        if (not (request.status == #pending)) { Runtime.trap("Already processed") };
+        withdrawalRequests.add(id, { request with status = #approved; reviewedAt = Time.now() });
+      };
+    };
+  };
+
+  public shared func rejectWithdrawalAdmin(id : Nat, adminPw : Text) : async () {
+    if (adminPw != "Sandeep@321") { Runtime.trap("Invalid admin credentials") };
+    switch (withdrawalRequests.get(id)) {
+      case (null) { Runtime.trap("Withdrawal request not found") };
+      case (?request) {
+        withdrawalRequests.add(id, { request with status = #rejected; reviewedAt = Time.now() });
+        let cur = switch (usernameBalances.get(request.username)) { case (null) { 0 }; case (?b) { b } };
+        usernameBalances.add(request.username, cur + request.amount);
+      };
+    };
+  };
+
+  public query func getUserBalancePublic(username : Text) : async Nat {
+    switch (usernameBalances.get(username)) { case (null) { 0 }; case (?b) { b } };
+  };
+
+
 };
